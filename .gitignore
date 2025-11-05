@@ -351,3 +351,4 @@ recordings/
 **/playwright-report/
 **/test-results/
 **/nupkg/
+*.vsix

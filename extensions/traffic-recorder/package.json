@@ -2,7 +2,7 @@
   "name": "traffic-recorder",
   "displayName": "Traffic Recorder for Dev Proxy",
   "description": "VS Code extension to record HTTP traffic using Dev Proxy and Playwright",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "maxgolov",
   "repository": {
     "type": "git",

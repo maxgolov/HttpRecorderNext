@@ -1,5 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -7,10 +6,9 @@
     <IsPackable>true</IsPackable>
     <EnableDefaultItems>false</EnableDefaultItems>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    
     <!-- Package metadata -->
     <PackageId>HttpRecorder.DevProxy</PackageId>
-    <Version>0.4.0</Version>
+    <Version>0.5.0</Version>
     <Authors>Max Golovanov</Authors>
     <Company>Max Golovanov</Company>
     <Description>Dev Proxy plugin for recording HTTP traffic to HAR files using HttpRecorder library. Features streaming HAR file writes with real-time flush and session-based recording. All traffic accumulated in a single HAR file per session.</Description>
@@ -21,26 +19,17 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
-
   <ItemGroup>
     <Compile Include="**\*.cs" Exclude="bin\**;obj\**" />
   </ItemGroup>
-
   <ItemGroup>
     <None Include="..\README.md" Pack="true" PackagePath="\" />
     <None Include="..\devproxyrc.example.json" Pack="true" PackagePath="content\" />
   </ItemGroup>
-
   <!-- Copy HttpRecorder.dll to output and include in package -->
   <ItemGroup>
-    <None Include="..\..\HttpRecorder\bin\$(Configuration)\$(TargetFramework)\HttpRecorder.dll" 
-          Link="HttpRecorder.dll" 
-          Pack="true" 
-          PackagePath="lib\$(TargetFramework)" 
-          CopyToOutputDirectory="PreserveNewest"
-          Condition="Exists('..\..\HttpRecorder\bin\$(Configuration)\$(TargetFramework)\HttpRecorder.dll')" />
+    <None Include="..\..\HttpRecorder\bin\$(Configuration)\$(TargetFramework)\HttpRecorder.dll" Link="HttpRecorder.dll" Pack="true" PackagePath="lib\$(TargetFramework)" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\HttpRecorder\bin\$(Configuration)\$(TargetFramework)\HttpRecorder.dll')" />
   </ItemGroup>
-
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
@@ -50,7 +39,6 @@
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
   </ItemGroup>
-
   <ItemGroup>
     <Reference Include="DevProxy.Abstractions">
       <HintPath>.\DevProxy.Abstractions.dll</HintPath>
@@ -62,5 +50,4 @@
       <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
     </ProjectReference>
   </ItemGroup>
-
 </Project>
