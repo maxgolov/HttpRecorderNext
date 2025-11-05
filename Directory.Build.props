@@ -1,18 +1,23 @@
 <Project>
   <!-- Common properties for all projects -->
   <PropertyGroup>
-    <Authors>nventive</Authors>
-    <Description>.NET HttpClient integration tests made easy.</Description>
-    <Copyright>Copyright (c) 2020, nventive</Copyright>
+  <PackageId Condition=" '$(IsPackable)' == 'true' ">HttpRecorder.Next</PackageId>
+    <Authors>maxgolov</Authors>
+    <Description>.NET HttpClient integration tests made easy. Modern fork with .NET 8 and .NET 9 support.</Description>
+    <Copyright>Copyright (c) 2020, nventive; 2025, maxgolov</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-    <Product>HttpRecorder</Product>
-    <LangVersion>8.0</LangVersion>
+    <Product>HttpRecorder.Next</Product>
+    <LangVersion>latest</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningsAsErrors />
     <NoWarn>1701;1702;1998</NoWarn>
     <PackageIconUrl>https://nventive-email-assets.s3.amazonaws.com/packages/nv-package-logo%400%2C25x.png</PackageIconUrl>
     <PackageIcon>icon.png</PackageIcon>
-    <PackageProjectUrl>https://github.com/nventive/HttpRecorder</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/maxgolov/HttpRecorderNext</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/maxgolov/HttpRecorderNext</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>http;testing;recorder;httpclient;integration-tests;har;net8;net9</PackageTags>
+    <PackageReleaseNotes>Modern fork with .NET 8 and .NET 9 multi-targeting support. Updated dependencies and API modernization.</PackageReleaseNotes>
     <Deterministic>true</Deterministic>
   </PropertyGroup>
 

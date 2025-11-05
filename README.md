@@ -1,4 +1,4 @@
-# HttpRecorder
+# HttpRecorder.Next
 
 .NET HttpClient integration tests made easy.
 
@@ -6,16 +6,23 @@ HttpRecorder is an `HttpMessageHandler` that can record and replay HTTP interact
 
 Interactions are recorded using the [HTTP Archive format standard](https://en.wikipedia.org/wiki/.har), so that they are easily manipulated by your favorite tool of choice.
 
+> **Note:** This is a fork of the [original HttpRecorder by nventive](https://github.com/nventive/HttpRecorder) with modern .NET 8+ support, updated dependencies, and compatibility fixes for the latest .NET ecosystem.
+
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Build Status](https://dev.azure.com/nventive-public/nventive/_apis/build/status/nventive.HttpRecorder?branchName=master)](https://dev.azure.com/nventive-public/nventive/_build/latest?definitionId=3&branchName=master)
-![Nuget](https://img.shields.io/nuget/v/HttpRecorder.svg)
+[![.NET 8](https://img.shields.io/badge/.NET-8.0-blue.svg)](https://dotnet.microsoft.com/download/dotnet/8.0)
+[![.NET 9](https://img.shields.io/badge/.NET-9.0-blue.svg)](https://dotnet.microsoft.com/download/dotnet/9.0)
+![Nuget](https://img.shields.io/nuget/v/HttpRecorder.Next.svg)
 
 ## Getting Started
 
 Install the package:
 
 ```
-Install-Package HttpRecorder
+dotnet add package HttpRecorder.Next
+
+# or, using Package Manager
+
+Install-Package HttpRecorder.Next
 ```
 
 Here is an example of an integration tests using **HttpRecorder** (the `HttpRecorderDelegatingHandler`):
