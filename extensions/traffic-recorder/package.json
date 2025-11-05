@@ -1,0 +1,197 @@
+{
+  "name": "traffic-recorder",
+  "displayName": "Traffic Recorder for Dev Proxy",
+  "description": "VS Code extension to record HTTP traffic using Dev Proxy and Playwright",
+  "version": "0.4.0",
+  "publisher": "maxgolov",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/maxgolov/HttpRecorderNext.git"
+  },
+  "engines": {
+    "vscode": "^1.105.0",
+    "node": ">=20.0.0"
+  },
+  "categories": [
+    "Testing",
+    "Debuggers",
+    "Other"
+  ],
+  "keywords": [
+    "dev-proxy",
+    "playwright",
+    "har",
+    "http",
+    "recording",
+    "testing",
+    "devtools",
+    "network",
+    "proxy"
+  ],
+  "extensionDependencies": [],
+  "extensionPack": [],
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onCommand:traffic-recorder.startProxy",
+    "onCommand:traffic-recorder.stopProxy",
+    "onCommand:traffic-recorder.runTests"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "traffic-recorder.startProxy",
+        "title": "Traffic Recorder: Start Dev Proxy",
+        "icon": "$(record)"
+      },
+      {
+        "command": "traffic-recorder.stopProxy",
+        "title": "Traffic Recorder: Stop Dev Proxy",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "traffic-recorder.runTests",
+        "title": "Traffic Recorder: Run All Tests",
+        "icon": "$(play)"
+      },
+      {
+        "command": "traffic-recorder.installDevProxy",
+        "title": "Traffic Recorder: Install Dev Proxy",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "trafficRecorder.previewHAR",
+        "title": "Traffic Recorder: Preview HAR File",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "traffic-recorder.runCurrentTest",
+        "title": "Traffic Recorder: Run Current Test File",
+        "icon": "$(run)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "when": "resourceExtname == .har",
+          "command": "trafficRecorder.previewHAR",
+          "group": "navigation"
+        }
+      ],
+      "editor/title": [
+        {
+          "when": "resourceExtname == .har",
+          "command": "trafficRecorder.previewHAR",
+          "group": "navigation"
+        },
+        {
+          "when": "resourceFilename =~ /\\.(spec|test)\\.ts$/ && editorLangId == typescript",
+          "command": "traffic-recorder.runCurrentTest",
+          "group": "navigation"
+        }
+      ]
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "trafficRecorderStatus",
+          "name": "Traffic Recorder"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "trafficRecorderStatus",
+        "contents": "No workspace folder open.\n[Open Folder](command:vscode.openFolder)"
+      }
+    ],
+    "configuration": {
+      "title": "Traffic Recorder",
+      "properties": {
+        "trafficRecorder.devProxyHost": {
+          "type": "string",
+          "default": "localhost",
+          "description": "Host for Dev Proxy to listen on"
+        },
+        "trafficRecorder.devProxyPort": {
+          "type": "number",
+          "default": 8000,
+          "description": "Port for Dev Proxy to listen on"
+        },
+        "trafficRecorder.outputDirectory": {
+          "type": "string",
+          "default": "./.http-recorder",
+          "description": "Directory to save HAR recordings"
+        },
+        "trafficRecorder.autoStart": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically start Dev Proxy when running tests"
+        },
+        "trafficRecorder.useBetaVersion": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use Dev Proxy Beta version for latest features"
+        },
+        "trafficRecorder.asSystemProxy": {
+          "type": "boolean",
+          "default": false,
+          "description": "Register Dev Proxy as system proxy (modifies Windows proxy settings)"
+        },
+        "trafficRecorder.useLocalPlugin": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use locally built HttpRecorder.DevProxy plugin instead of downloading from NuGet (for development)"
+        },
+        "trafficRecorder.playwrightCommand": {
+          "type": "string",
+          "default": "npx playwright test",
+          "description": "Command to run Playwright tests"
+        },
+        "trafficRecorder.playwrightArgs": {
+          "type": "string",
+          "default": "--headed",
+          "description": "Additional arguments for Playwright test command"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run build",
+    "test": "node ./dist/test/runTest.js",
+    "test:unit": "vitest",
+    "test:ui": "vitest --ui",
+    "test:playwright": "playwright test",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package",
+    "install-extension": "code --install-extension traffic-recorder-0.1.0.vsix",
+    "copy-scripts": "node ./scripts/copy-to-user-dir.js"
+  },
+  "dependencies": {
+    "execa": "^9.6.0",
+    "tree-kill": "^1.2.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "@types/glob": "^9.0.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^24.10.0",
+    "@types/vscode": "^1.105.0",
+    "@typescript-eslint/eslint-plugin": "^8.46.3",
+    "@typescript-eslint/parser": "^8.46.3",
+    "@vitest/ui": "^4.0.7",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.6.2",
+    "eslint": "^9.39.1",
+    "glob": "^11.0.3",
+    "mocha": "^11.7.5",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.12",
+    "vitest": "^4.0.7"
+  }
+}

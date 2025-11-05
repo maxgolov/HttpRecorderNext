@@ -1,12 +1,8 @@
-# HttpRecorder.Next
+# HttpRecorder - HTTP Traffic Recording for .NET
 
-.NET HttpClient integration tests made easy.
+Record and replay HTTP interactions in HAR format for testing, debugging, and API documentation.
 
-HttpRecorder is an `HttpMessageHandler` that can record and replay HTTP interactions through the standard `HttpClient` . This allows the creation of HTTP integration tests that are fast, repeatable and reliable.
-
-Interactions are recorded using the [HTTP Archive format standard](https://en.wikipedia.org/wiki/.har), so that they are easily manipulated by your favorite tool of choice.
-
-> **Note:** This is a modernized fork of the [original HttpRecorder by nventive](https://github.com/nventive/HttpRecorder), maintained by **Max Golovanov** ([max.golovanov+github@gmail.com](mailto:max.golovanov+github@gmail.com)). This fork features .NET 8 and .NET 9 support, updated dependencies, modern APIs, and compatibility fixes for the latest .NET ecosystem.
+> **Note:** This is a modernized fork of the [original HttpRecorder by nventive](https://github.com/nventive/HttpRecorder), maintained by **Max Golovanov** ([max.golovanov+github@gmail.com](mailto:max.golovanov+github@gmail.com)). Features .NET 8/9 support, Dev Proxy plugin, VS Code extension, and modern APIs.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-blue.svg)](https://dotnet.microsoft.com/download/dotnet/8.0)
@@ -14,19 +10,84 @@ Interactions are recorded using the [HTTP Archive format standard](https://en.wi
 ![Nuget](https://img.shields.io/nuget/v/HttpRecorder.Next.svg)
 ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 
-## Getting Started
+## What's New
 
-Install the package:
+**3 Ways to Record HTTP Traffic:**
 
+1. **VS Code Extension** - Record browser traffic during Playwright tests (290 KB, self-contained)
+2. **.NET Library** - Record HttpClient traffic in your code (40 KB)
+3. **Dev Proxy Plugin** - Record ANY HTTP traffic through proxy (25 KB plugin + 123 MB Dev Proxy)
+
+## Quick Start
+
+### Option 1: VS Code Extension (Browser Testing)
+
+```bash
+# Install from VSIX (Marketplace coming soon)
+code --install-extension traffic-recorder-0.4.0.vsix
 ```
+
+**Features:**
+- ✅ Record Playwright browser traffic to HAR files
+- ✅ Self-contained setup (like Python .venv)
+- ✅ Automatic anonymization of sensitive data
+- ✅ One-click start/stop from VS Code
+
+See [Traffic Recorder Extension docs](docs/TRAFFIC_RECORDER_EXTENSION.md) for details.
+
+---
+
+### Option 2: .NET Library (HttpClient Recording)
+
+### Option 2: .NET Library (HttpClient Recording)
+
+```bash
 dotnet add package HttpRecorder.Next
-
-# or, using Package Manager
-
-Install-Package HttpRecorder.Next
 ```
 
-Here is an example of an integration tests using **HttpRecorder** (the `HttpRecorderDelegatingHandler`):
+```csharp
+using HttpRecorder;
+
+// Record HTTP traffic
+var handler = new HttpRecorderDelegatingHandler("recordings/api.har");
+var client = new HttpClient(handler) { 
+    InnerHandler = new HttpClientHandler() 
+};
+
+await client.GetAsync("https://api.example.com/users");
+// Traffic saved to recordings/api.har
+```
+
+---
+
+### Option 3: Dev Proxy Plugin (Any HTTP Traffic)
+
+```bash
+# Install plugin
+dotnet add package HttpRecorder.DevProxy
+
+# Configure devproxyrc.json
+{
+  "plugins": [{
+    "name": "HttpRecorderPlugin",
+    "pluginPath": "./bin/plugins/HttpRecorder.DevProxy.dll",
+    "configSection": "httpRecorder"
+  }],
+  "httpRecorder": {
+    "outputDirectory": ".",
+    "mode": "Record"
+  }
+}
+
+# Start Dev Proxy
+devproxy-beta --config-file devproxyrc.json
+```
+
+**Note:** Only 2 DLLs needed (65 KB) - BouncyCastle and Titanium.Web.Proxy already in Dev Proxy!
+
+---
+
+## Integration Test Example
 
 ```csharp
 using System;
@@ -85,149 +146,272 @@ namespace Sample
 }
 ```
 
-## Features
+}
 
-### Record mode
+## Key Features
 
-The  `HttpRecorderDelegatingHandler` can be run in different modes:
+✅ **Standard HAR Format** - Compatible with Chrome DevTools, Fiddler, HAR Viewer  
+✅ **Auto Record/Replay** - Record once, replay in tests (no network calls)  
+✅ **Anonymization** - Redact auth tokens, cookies, API keys automatically  
+✅ **HttpClientFactory Support** - First-class ASP.NET Core integration  
+✅ **Custom Matchers** - Control how requests are matched for replay  
+✅ **Multiple Modes** - Record, Replay, Auto, Passthrough  
+✅ **Minimal Overhead** - Extension 290 KB, Library 40 KB, Plugin 25 KB  
 
-- Auto: Default mode - replay the interactions if the recording exists, otherwise record it.
-- Record: Always record the interaction, even if a record is present.
-- Replay: Always replay the interaction, throw if there is no recording.
-- Passthrough: Always passes the request/response down the line, without any interaction
+## Advanced Features
 
-Just use the appropriate mode in the `HttpRecorderDelegatingHandler`  constructor.
+## Advanced Features
 
-The mode can also be overridden using the environment variable `HTTP_RECORDER_MODE`.
-If this is set to any valid `HttpRecorderMode` value, it will override the mode set in the code,
-except if this mode is `HttpRecorderMode.Passthrough`.
-This is useful when running in a CI environment and you want to make sure that no
-request goes out and all interactions are properly committed to the codebase.
+### Recording Modes
 
-### Customize the matching behavior
+### Recording Modes
 
-By default, matching of the recorded requests is done by comparing the HTTP Method and complete Request URI. The first request that match is used and will not be returned again in the current run.
+The `HttpRecorderDelegatingHandler` supports multiple modes:
 
-If needed, the matching behavior can be customized using the `RulesMatcher`:
+| Mode | Behavior |
+|------|----------|
+| **Auto** | Default - replay if recording exists, otherwise record |
+| **Record** | Always record, even if recording exists |
+| **Replay** | Always replay, throw if no recording |
+| **Passthrough** | Pass through without recording or replay |
+
+```csharp
+// Set mode explicitly
+var handler = new HttpRecorderDelegatingHandler(
+    "recordings/api.har", 
+    mode: HttpRecorderMode.Replay
+);
+
+// Or override via environment variable
+// Environment.SetEnvironmentVariable("HTTP_RECORDER_MODE", "Replay");
+```
+
+```
+
+---
+
+### Custom Request Matching
+
+### Custom Request Matching
+
+Default: Match by HTTP method + complete URI. Customize with `RulesMatcher`:
 
 ```csharp
 using HttpRecorder.Matchers;
 
-// Will match requests once in order, without comparing requests.
+// Match once in order (no comparison)
 var matcher = RulesMatcher.MatchOnce;
 
-// Will match requests once only by comparing HTTP methods.
+// Match by HTTP method only
 matcher = RulesMatcher.MatchOnce.ByHttpMethod();
 
-// Will match requests multiple times by comparing HTTP methods,
-// request uri (excluding the query string) and the X-API-Key header.
+// Match by method + path + header (ignore query string)
 matcher = RulesMatcher.MatchMultiple
     .ByHttpMethod()
     .ByRequestUri(UriPartial.Path)
     .ByHeader("X-API-Key");
 
-// Custom matching rule using the provided incoming request
-// and a recorded interaction message.
-matcher = RulesMatcher.MatchOnce.By((request, message) => ...);
+// Custom rule
+matcher = RulesMatcher.MatchOnce.By((request, message) => 
+    request.RequestUri?.Host == message.Request.Url.Host
+);
 
-var client = new HttpClient(new HttpRecorderDelegatingHandler("...", matcher: matcher));
+var client = new HttpClient(
+    new HttpRecorderDelegatingHandler("...", matcher: matcher)
+);
 ```
 
-Additional customization can be done by providing a custom `IRequestMatcher` implementation.
+---
 
-### Anonymize the records
+### Data Anonymization
 
-Sometimes, there are portions of the requests / responses that you don't want recorded
-(e.g. because of API keys you do not want to commit to the source code repo...).
+### Data Anonymization
 
-In this case, you can use the `RulesInteractionAnonymizer` to perform the substitution.
+Redact sensitive data before recording:
 
 ```csharp
 using HttpRecorder.Anonymizers;
 
 var anonymizer = RulesInteractionAnonymizer.Default
-    .AnonymizeRequestQueryStringParameter("queryStringParam")
-    .AnonymizeRequestHeader("requestHeader");
+    .AnonymizeRequestQueryStringParameter("api_key")
+    .AnonymizeRequestHeader("Authorization")
+    .AnonymizeResponseHeader("Set-Cookie");
 
-var client = new HttpClient(new HttpRecorderDelegatingHandler("...", anonymizer: anonymizer));
+var client = new HttpClient(
+    new HttpRecorderDelegatingHandler("...", anonymizer: anonymizer)
+);
 ```
 
-Additional customization can be done by providing a custom `IInteractionAnonymizer`
-implementation.
+---
 
-### HttpClientFactory
+### HttpClientFactory Integration
 
-The component comes with extension methods for the HttpClientFactory:
+### HttpClientFactory Integration
+
+ASP.NET Core first-class support:
 
 ```csharp
+// Startup.cs / Program.cs
 services
-    .AddHttpClient("TheClient")
-    .AddHttpRecorder(interactionName);
+    .AddHttpClient("github")
+    .AddHttpRecorder("recordings/github.har");
+
+// Use in controllers
+public class DataController : ControllerBase
+{
+    private readonly IHttpClientFactory _factory;
+    
+    public DataController(IHttpClientFactory factory) => _factory = factory;
+    
+    [HttpGet("user/{id}")]
+    public async Task<IActionResult> GetUser(string id)
+    {
+        var client = _factory.CreateClient("github");
+        var response = await client.GetAsync($"https://api.github.com/users/{id}");
+        return Ok(await response.Content.ReadAsStringAsync());
+    }
+}
 ```
 
-### Recorder Context
+---
 
-It is sometime helpful to be able to decoralate the injection of the `HttpRecorderDelegatingHandler`
-and the Test case setup.
+### Recorder Context (Advanced)
 
-This is especially useful in the context of ASP.NET Core Integration tests.
+### Recorder Context (Advanced)
 
-It is possible to add the `HttpRecorderDelegatingHandler` globally to all `HttpClient` managed by the `IHttpClientFactory`,
-and then to customize the recording in the test case by using the `HttpRecorderContext`.
-
-Here is how to do it:
+For ASP.NET Core integration tests, separate handler injection from test setup:
 
 ```csharp
-// When registering the services, do the following:
+// In WebApplicationFactory.ConfigureWebHost:
 services.AddHttpRecorderContextSupport();
-// This can be done in the ConfigureWebHost method of the WebApplicationFactory for example.
-// It will inject the HttpRecorderDelegatingHandler in all HttpClients.
 
-// Then, write your test cases using the following pattern:
+// In test cases:
 [Fact]
 public async Task ItShould()
 {
-    using var context = new HttpRecorderContext(); // Notice the using pattern here.
-    // .. Perform test case. Interactions are recorded and replay as expected :-)
+    using var context = new HttpRecorderContext();
+    // ... perform test, interactions recorded automatically
 }
 
-// Additional configuration per HttpClient can be setup as well:
+// Per-client configuration:
 [Fact]
-public async Task ItShould()
+public async Task CustomConfig()
 {
     using var context = new HttpRecorderContext((sp, builder) =>
+        builder.Name switch
         {
-            return builder.Name switch // The builder name here is the name of the HttpClient.
+            "TypedClient" => new HttpRecorderConfiguration
             {
-                nameof(TypedClient) => new HttpRecorderConfiguration
-                {
-                    Matcher = RulesMatcher.MatchMultiple,
-                },
-                nameof(DisabledClient) => new HttpRecorderConfiguration
-                {
-                    Enabled = false,
-                },
-                _ => null // Default configuration.
-            };
+                Matcher = RulesMatcher.MatchMultiple
+            },
+            "DisabledClient" => new HttpRecorderConfiguration
+            {
+                Enabled = false
+            },
+            _ => null
         });
-    // .. Perform test case.
+    // ... perform test
 }
 ```
 
-### Record interaction in external tools
+---
 
-Interaction files can be recorded using your favorite tool (e.g. [Fiddler](https://www.telerik.com/fiddler), Google Chrome Inspector, ...).
+## Distribution & Package Sizes
 
-You only have to export it using the HAR/HTTP Archive format. They can then be used as-is as a test fixture that will be loaded by the `HttpRecorderDelegatingHandler`.
+| Package | Size | What's Included |
+|---------|------|-----------------|
+| **VS Code Extension** | 290 KB | Extension + 2 plugin DLLs (self-contained) |
+| **HttpRecorder.Next** | ~40 KB | Core library |
+| **HttpRecorder.DevProxy** | ~25 KB | Dev Proxy plugin |
 
-### Customize the storage
+**Why so small?** Dev Proxy (123 MB) already includes Titanium.Web.Proxy and BouncyCastle. Our plugin leverages these at runtime instead of bundling them.
 
-Reading/writing the interaction can be customized by providing a custom `IInteractionRepository` implementation.
+### Installation
+
+```bash
+# VS Code Extension (VSIX direct install)
+code --install-extension traffic-recorder-0.4.0.vsix
+
+# NuGet packages
+dotnet add package HttpRecorder.Next         # Core library
+dotnet add package HttpRecorder.DevProxy     # Dev Proxy plugin
+
+# VS Code Marketplace (coming soon)
+code --install-extension maxgolov.traffic-recorder
+```
+
+---
+
+## Version Compatibility
+
+- **Dev Proxy:** v1.3.0-beta.2 or later
+- **.NET:** 8.0 or 9.0
+- **VS Code:** 1.105.0 or later
+- **Node.js:** 20.0.0 or later (extension development only)
+
+---
+
+## Viewing HAR Files
+
+HAR files can be viewed in:
+
+1. **Chrome DevTools** - Network tab → Right-click → Import HAR
+2. **Fiddler** - File → Import → HAR
+3. **Online HAR Viewer** - http://www.softwareishard.com/har/viewer/
+4. **VS Code** - Install HAR viewer extensions
+
+---
+
+## Documentation
+
+- [Traffic Recorder Extension](docs/TRAFFIC_RECORDER_EXTENSION.md) - Complete VS Code extension guide
+- [Plugin Development](DevProxyExtension/README.md) - Dev Proxy plugin details
+- [Changelog](CHANGELOG.md) - Version history
+- [Contributing](CONTRIBUTING.md) - Contribution guidelines
+
+---
+
 
 ## Changelog
 
-Please consult the [CHANGELOG](CHANGELOG.md) for more information about version
-history.
+### v0.4.0 (2025-11-05)
+
+**Breaking Changes:**
+- Removed bundled BouncyCastle and Titanium.Web.Proxy DLLs (already in Dev Proxy)
+
+**Improvements:**
+- Extension size reduced from 4.89 MB to 290 KB (94% reduction)
+- Self-contained `.http-recorder/bin/plugins/` structure (like Python .venv)
+- Relative paths in configuration (portable across machines)
+- Optimized plugin dependencies (only 2 DLLs needed)
+
+**Fixed:**
+- Directory navigation in VS Code Explorer
+- Plugin loading with minimal dependencies
+- HAR file path logging (forward slashes)
+
+See [CHANGELOG.md](CHANGELOG.md) for complete version history.
+
+---
+
+## Troubleshooting
+
+**Plugin not loading in Dev Proxy?**
+- Ensure plugin path is correct in `devproxyrc.json`
+- Verify .NET 9.0 runtime installed
+- Check Dev Proxy logs for error messages
+
+**HAR files not created?**
+- Verify `outputDirectory` exists and is writable
+- Check `mode: "Record"` in configuration
+- Review Dev Proxy console output
+
+**Extension not starting?**
+- Install Dev Proxy: `winget install Microsoft.DevProxy.Beta`
+- Check VS Code Output panel for errors
+- Ensure port 8000 is available
+
+---
 
 ## License
 

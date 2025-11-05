@@ -1,0 +1,188 @@
+name: Release Extension
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.1.0)'
+        required: true
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: extensions/traffic-recorder/package-lock.json
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      
+      - name: Install extension dependencies
+        run: |
+          cd extensions/traffic-recorder
+          npm ci
+      
+      - name: Build HttpRecorder.DevProxy plugin
+        run: |
+          dotnet build DevProxyExtension/HttpRecorder.DevProxy/HttpRecorder.DevProxy.csproj --configuration Release
+      
+      - name: Run .NET tests
+        run: |
+          dotnet test HttpRecorder.Tests/HttpRecorder.Tests.csproj --configuration Release
+      
+      - name: Build extension
+        run: |
+          cd extensions/traffic-recorder
+          npm run build
+      
+      - name: Run extension tests
+        run: |
+          cd extensions/traffic-recorder
+          npm test
+      
+      - name: Package extension
+        run: |
+          cd extensions/traffic-recorder
+          npm run package
+      
+      - name: Get version
+        id: get_version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -match 'refs/tags/v(.+)') {
+            $version = $Matches[1]
+          } elseif ('${{ github.event.inputs.version }}') {
+            $version = '${{ github.event.inputs.version }}'
+          } else {
+            $version = '0.0.0'
+          }
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          echo "Version: $version"
+      
+      - name: Create NuGet package
+        run: |
+          dotnet pack DevProxyExtension/HttpRecorder.DevProxy/HttpRecorder.DevProxy.csproj `
+            --configuration Release `
+            --output ./artifacts `
+            /p:Version=${{ steps.get_version.outputs.VERSION }}
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.get_version.outputs.VERSION }}
+          name: Release v${{ steps.get_version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          files: |
+            extensions/traffic-recorder/*.vsix
+            artifacts/*.nupkg
+          body: |
+            ## Traffic Recorder Extension v${{ steps.get_version.outputs.VERSION }}
+            
+            ### Installation
+            
+            **VS Code Extension:**
+            ```bash
+            code --install-extension traffic-recorder-${{ steps.get_version.outputs.VERSION }}.vsix
+            ```
+            
+            **Or download from [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=maxgolov.traffic-recorder)**
+            
+            **HttpRecorder.DevProxy Plugin (NuGet):**
+            ```bash
+            dotnet add package HttpRecorder.DevProxy --version ${{ steps.get_version.outputs.VERSION }}
+            ```
+            
+            ### What's Changed
+            
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for full details.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      # Uncomment when ready to publish to marketplace
+      # - name: Publish to VS Code Marketplace
+      #   if: startsWith(github.ref, 'refs/tags/')
+      #   run: |
+      #     cd extensions/traffic-recorder
+      #     npx @vscode/vsce publish -p ${{ secrets.VSCE_PAT }}
+      
+      # - name: Publish to Open VSX
+      #   if: startsWith(github.ref, 'refs/tags/')
+      #   run: |
+      #     cd extensions/traffic-recorder
+      #     npx ovsx publish -p ${{ secrets.OVSX_PAT }}
+      
+      # - name: Publish to NuGet.org
+      #   if: startsWith(github.ref, 'refs/tags/')
+      #   run: |
+      #     dotnet nuget push artifacts/*.nupkg `
+      #       --api-key ${{ secrets.NUGET_API_KEY }} `
+      #       --source https://api.nuget.org/v3/index.json
+
+  test-installation:
+    name: Test Installation
+    needs: build-and-release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      
+      - name: Download release artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: vsix-package
+          path: ./artifacts
+      
+      - name: Install extension (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $vsix = Get-ChildItem -Path ./artifacts -Filter *.vsix | Select-Object -First 1
+          code --install-extension $vsix.FullName
+      
+      - name: Install extension (Unix)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          vsix=$(find ./artifacts -name "*.vsix" | head -n 1)
+          code --install-extension "$vsix"
+      
+      - name: Verify installation
+        shell: pwsh
+        run: |
+          $extensions = code --list-extensions
+          if ($extensions -notcontains 'maxgolov.traffic-recorder') {
+            Write-Error "Extension not installed"
+            exit 1
+          }
+          Write-Host "✅ Extension installed successfully"

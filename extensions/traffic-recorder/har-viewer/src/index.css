@@ -1,0 +1,36 @@
+:root {
+  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-foreground);
+  background-color: var(--vscode-editor-background);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  color: var(--vscode-foreground);
+  background-color: var(--vscode-editor-background);
+}
+
+#root {
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Override Fluent UI colors to match VS Code theme */
+.fui-FluentProvider {
+  --colorNeutralForeground1: var(--vscode-foreground);
+  --colorNeutralBackground1: var(--vscode-editor-background);
+  --colorNeutralBackground2: var(--vscode-sideBar-background);
+  --colorBrandBackground: var(--vscode-button-background);
+  --colorBrandBackgroundHover: var(--vscode-button-hoverBackground);
+  --colorNeutralForegroundInverted: var(--vscode-button-foreground);
+}

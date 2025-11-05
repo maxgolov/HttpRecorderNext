@@ -1,3 +1,15 @@
 [submodule "external/dev-proxy"]
 	path = external/dev-proxy
 	url = https://github.com/dotnet/dev-proxy
+[submodule "external/har-viewer"]
+	path = external/har-viewer
+	url = https://github.com/srisenthilkumar/har-viewer
+[submodule "external/har-analyzer"]
+	path = external/har-analyzer
+	url = https://github.com/mfoulks3200/har-analyzer
+[submodule "external/dev-proxy-tools-mcp"]
+	path = external/dev-proxy-tools-mcp
+	url = https://github.com/dev-proxy-tools/mcp
+[submodule "external/dev-proxy-tools-toolkit"]
+	path = external/dev-proxy-tools-toolkit
+	url = https://github.com/dev-proxy-tools/toolkit

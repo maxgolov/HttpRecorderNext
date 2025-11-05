@@ -330,3 +330,24 @@ ASALocalRun/
 
 # MFractors (Xamarin productivity tool) working folder 
 .mfractor/
+
+# Environment variables with secrets
+.env
+
+# HTTP Recorder output directories
+.http-recorder/
+**/.http-recorder/
+recordings/
+**/recordings/
+
+# HAR files (except examples in external/docs)
+*.har
+!external/**/example*.har
+!docs/**/*.har
+
+**/bin
+*/nupkg
+**/.vscode-test
+**/playwright-report/
+**/test-results/
+**/nupkg/

@@ -1,0 +1,47 @@
+# VS Code extension packaging ignore file
+
+# Source files
+src/**
+tests/**
+scripts/**
+examples/**
+
+# Build configuration
+tsconfig.json
+vitest.config.ts
+playwright.config.ts
+
+# Test files
+*.spec.ts
+*.test.ts
+
+# Documentation (except README)
+AI-GUIDE.md
+
+# Git files
+.git
+.gitignore
+
+# Dependencies
+node_modules
+package-lock.json
+
+# HAR viewer source files (keep only dist)
+har-viewer/src/**
+har-viewer/node_modules/**
+har-viewer/package-lock.json
+har-viewer/tsconfig.json
+har-viewer/vite.config.ts
+har-viewer/index.html
+
+# Build artifacts
+test-results/
+playwright-report/
+recordings/
+
+# VS Code settings
+.vscode/
+
+# Misc
+*.log
+.DS_Store
