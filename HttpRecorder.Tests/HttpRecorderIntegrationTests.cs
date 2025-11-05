@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -41,10 +42,11 @@ namespace HttpRecorder.Tests
 
                 response.EnsureSuccessStatusCode();
                 response.Headers.Remove("Date");
+                response.Content.Headers.Remove("Content-Length");
                 if (mode == HttpRecorderMode.Passthrough)
                 {
                     passthroughResponse = response;
-                    var result = await response.Content.ReadAsAsync<SampleModel>();
+                    var result = await response.Content.ReadFromJsonAsync<SampleModel>();
                     result.Name.Should().Be(SampleModel.DefaultName);
                 }
                 else
@@ -66,10 +68,11 @@ namespace HttpRecorder.Tests
 
                 response.EnsureSuccessStatusCode();
                 response.Headers.Remove("Date");
+                response.Content.Headers.Remove("Content-Length");
                 if (mode == HttpRecorderMode.Passthrough)
                 {
                     passthroughResponse = response;
-                    var result = await response.Content.ReadAsAsync<SampleModel>();
+                    var result = await response.Content.ReadFromJsonAsync<SampleModel>();
                     result.Name.Should().Be(name);
                 }
                 else
@@ -91,11 +94,12 @@ namespace HttpRecorder.Tests
 
                 response.EnsureSuccessStatusCode();
                 response.Headers.Remove("Date");
+                response.Content.Headers.Remove("Content-Length");
 
                 if (mode == HttpRecorderMode.Passthrough)
                 {
                     passthroughResponse = response;
-                    var result = await response.Content.ReadAsAsync<SampleModel>();
+                    var result = await response.Content.ReadFromJsonAsync<SampleModel>();
                     result.Name.Should().Be(sampleModel.Name);
                 }
                 else
@@ -122,10 +126,11 @@ namespace HttpRecorder.Tests
 
                 response.EnsureSuccessStatusCode();
                 response.Headers.Remove("Date");
+                response.Content.Headers.Remove("Content-Length");
                 if (mode == HttpRecorderMode.Passthrough)
                 {
                     passthroughResponse = response;
-                    var result = await response.Content.ReadAsAsync<SampleModel>();
+                    var result = await response.Content.ReadFromJsonAsync<SampleModel>();
                     result.Name.Should().Be(sampleModel.Name);
                 }
                 else
@@ -154,6 +159,7 @@ namespace HttpRecorder.Tests
                 foreach (var response in responses)
                 {
                     response.Headers.Remove("Date");
+                    response.Content.Headers.Remove("Content-Length");
                 }
 
                 if (mode == HttpRecorderMode.Passthrough)
@@ -163,7 +169,7 @@ namespace HttpRecorder.Tests
                     {
                         var response = responses[i];
                         response.EnsureSuccessStatusCode();
-                        var result = await response.Content.ReadAsAsync<SampleModel>();
+                        var result = await response.Content.ReadFromJsonAsync<SampleModel>();
                         result.Name.Should().Be($"{i}");
                     }
                 }
@@ -189,10 +195,10 @@ namespace HttpRecorder.Tests
                 nameof(ItShouldExecuteMultipleRequestsInSequenceWithRecorderModeAuto));
             var response1 = await client.GetAsync($"{ApiController.JsonUri}?name=1");
             var response2 = await client.GetAsync($"{ApiController.JsonUri}?name=2");
-            var result1 = await response1.Content.ReadAsAsync<SampleModel>();
+            var result1 = await response1.Content.ReadFromJsonAsync<SampleModel>();
             result1.Name.Should().Be("1");
 
-            var result2 = await response2.Content.ReadAsAsync<SampleModel>();
+            var result2 = await response2.Content.ReadFromJsonAsync<SampleModel>();
             result2.Name.Should().Be("2");
 
             // We resolve to replay at this point.
@@ -289,6 +295,10 @@ namespace HttpRecorder.Tests
                 var response = await client.GetAsync($"{ApiController.StatusCodeUri}?statusCode={statusCode}");
                 response.StatusCode.Should().Be((HttpStatusCode)statusCode);
                 response.Headers.Remove("Date");
+                if (response.Content?.Headers != null)
+                {
+                    response.Content.Headers.Remove("Content-Length");
+                }
 
                 if (mode == HttpRecorderMode.Passthrough)
                 {

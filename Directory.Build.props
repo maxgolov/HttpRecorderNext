@@ -1,17 +1,18 @@
 <Project>
   <!-- Common properties for all projects -->
   <PropertyGroup>
-  <PackageId Condition=" '$(IsPackable)' == 'true' ">HttpRecorder.Next</PackageId>
-    <Authors>maxgolov</Authors>
+    <PackageId Condition=" '$(IsPackable)' == 'true' ">HttpRecorder.Next</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Max Golovanov</Authors>
+    <Owners>maxgolov</Owners>
     <Description>.NET HttpClient integration tests made easy. Modern fork with .NET 8 and .NET 9 support.</Description>
-    <Copyright>Copyright (c) 2020, nventive; 2025, maxgolov</Copyright>
+    <Copyright>Copyright (c) 2020 nventive (original), 2025 Max Golovanov &lt;max.golovanov+github@gmail.com&gt; (fork)</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <Product>HttpRecorder.Next</Product>
     <LangVersion>latest</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningsAsErrors />
     <NoWarn>1701;1702;1998</NoWarn>
-    <PackageIconUrl>https://nventive-email-assets.s3.amazonaws.com/packages/nv-package-logo%400%2C25x.png</PackageIconUrl>
     <PackageIcon>icon.png</PackageIcon>
     <PackageProjectUrl>https://github.com/maxgolov/HttpRecorderNext</PackageProjectUrl>
     <RepositoryUrl>https://github.com/maxgolov/HttpRecorderNext</RepositoryUrl>

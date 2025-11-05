@@ -6,12 +6,13 @@ HttpRecorder is an `HttpMessageHandler` that can record and replay HTTP interact
 
 Interactions are recorded using the [HTTP Archive format standard](https://en.wikipedia.org/wiki/.har), so that they are easily manipulated by your favorite tool of choice.
 
-> **Note:** This is a fork of the [original HttpRecorder by nventive](https://github.com/nventive/HttpRecorder) with modern .NET 8+ support, updated dependencies, and compatibility fixes for the latest .NET ecosystem.
+> **Note:** This is a modernized fork of the [original HttpRecorder by nventive](https://github.com/nventive/HttpRecorder), maintained by **Max Golovanov** ([max.golovanov+github@gmail.com](mailto:max.golovanov+github@gmail.com)). This fork features .NET 8 and .NET 9 support, updated dependencies, modern APIs, and compatibility fixes for the latest .NET ecosystem.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-blue.svg)](https://dotnet.microsoft.com/download/dotnet/8.0)
 [![.NET 9](https://img.shields.io/badge/.NET-9.0-blue.svg)](https://dotnet.microsoft.com/download/dotnet/9.0)
 ![Nuget](https://img.shields.io/nuget/v/HttpRecorder.Next.svg)
+![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 
 ## Getting Started
 
@@ -245,3 +246,4 @@ Be mindful of our [Code of Conduct](CODE_OF_CONDUCT.md).
 - https://github.com/vcr/vcr
 - https://github.com/nock/nock
 - https://github.com/mleech/scotch
+- https://github.com/nventive/HttpRecorder
