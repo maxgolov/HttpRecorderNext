@@ -1,0 +1,7 @@
+<Project>
+  <!-- Override parent Directory.Build.props for Dev Proxy extension -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+</Project>

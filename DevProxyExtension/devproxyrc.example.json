@@ -1,0 +1,34 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/dev-proxy/main/schemas/v0.14.1/rc.schema.json",
+  "plugins": [
+    {
+      "name": "HttpRecorderPlugin",
+      "enabled": true,
+      "pluginPath": "./DevProxyExtension/HttpRecorder.DevProxy/bin/Debug/net9.0/HttpRecorder.DevProxy.dll",
+      "configSection": "httpRecorder"
+    }
+  ],
+  "urlsToWatch": [
+    "https://jsonplaceholder.typicode.com/*",
+    "https://api.github.com/*",
+    "https://graph.microsoft.com/*"
+  ],
+  "httpRecorder": {
+    "outputDirectory": "./recordings",
+    "mode": "Record",
+    "includeBodies": true,
+    "anonymizeSensitiveData": true,
+    "sensitiveHeaders": [
+      "Authorization",
+      "Cookie",
+      "Set-Cookie",
+      "X-API-Key",
+      "X-Auth-Token",
+      "Ocp-Apim-Subscription-Key"
+    ]
+  },
+  "rate": 50,
+  "logLevel": "info",
+  "newVersionNotification": "stable",
+  "showSkipMessages": false
+}
