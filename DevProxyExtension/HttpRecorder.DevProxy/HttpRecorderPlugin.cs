@@ -94,9 +94,10 @@ public sealed class HttpRecorderPlugin : BasePlugin<HttpRecorderPluginConfigurat
             var timings = new InteractionMessageTimings(pending.StartTime, totalTime);
             var interactionMessage = new InteractionMessage(responseMessage, timings);
 
-            // Create Interaction
+            // Create Interaction with full path
             var interactionName = SanitizeInteractionName(pending.Id, e.Session.HttpClient.Request);
-            var interaction = new Interaction(interactionName, new[] { interactionMessage });
+            var filePath = await PrepareOutputFilePathAsync(interactionName);
+            var interaction = new Interaction(filePath, new[] { interactionMessage });
 
             Logger.LogInformation(
                 "Recording response: {StatusCode} for {Method} {Url}",
@@ -105,7 +106,7 @@ public sealed class HttpRecorderPlugin : BasePlugin<HttpRecorderPluginConfigurat
                 e.Session.HttpClient.Request.RequestUri);
 
             // Save to HAR file
-            await SaveInteractionAsync(interaction, interactionName);
+            await SaveInteractionAsync(interaction);
         }
         catch (Exception ex)
         {
@@ -190,25 +191,32 @@ public sealed class HttpRecorderPlugin : BasePlugin<HttpRecorderPluginConfigurat
         return response;
     }
 
-    private async Task SaveInteractionAsync(Interaction interaction, string interactionName)
+    private Task<string> PrepareOutputFilePathAsync(string interactionName)
+    {
+        // Ensure output directory exists
+        var outputDir = Configuration.OutputDirectory;
+        if (!Directory.Exists(outputDir))
+        {
+            Directory.CreateDirectory(outputDir);
+        }
+
+        // Return full path
+        return Task.FromResult(Path.Combine(outputDir, interactionName));
+    }
+
+    private async Task SaveInteractionAsync(Interaction interaction)
     {
         try
         {
-            // Ensure output directory exists
-            var outputDir = Configuration.OutputDirectory;
-            if (!Directory.Exists(outputDir))
-            {
-                Directory.CreateDirectory(outputDir);
-            }
-
             // Store the interaction using the repository
+            // The interaction.Name already contains the full path
             await _repository.StoreAsync(interaction, CancellationToken.None);
 
-            Logger.LogInformation("Saved HAR recording: {InteractionName}", interactionName);
+            Logger.LogInformation("Saved HAR recording: {InteractionName}", Path.GetFileNameWithoutExtension(interaction.Name));
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error saving HAR file for {InteractionName}", interactionName);
+            Logger.LogError(ex, "Error saving HAR file for {InteractionName}", interaction.Name);
         }
     }
 

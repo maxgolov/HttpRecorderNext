@@ -26,12 +26,38 @@ DevProxyExtension/
 
 ## Prerequisites
 
-1. **Microsoft Dev Proxy** - Install from:
-   - [Microsoft Dev Proxy Documentation](https://learn.microsoft.com/microsoft-cloud/dev/dev-proxy/)
-   - `winget install Microsoft.DevProxy` (Windows)
-   - `brew install --cask microsoft-dev-proxy` (macOS)
+1. **Microsoft Dev Proxy** - Install using winget (recommended):
+   ```powershell
+   # Stable version
+   winget install DevProxy.DevProxy --silent
+   
+   # OR Beta version (for latest preview features)
+   winget install DevProxy.DevProxy.Beta --silent
+   ```
+   
+   **Important**: After installation, restart your command prompt to refresh the PATH environment variable.
+   
+   Alternative: Manual installation from [Microsoft Dev Proxy Documentation](https://learn.microsoft.com/microsoft-cloud/dev/dev-proxy/)
 
 2. **.NET 9.0 SDK** - Required for building the plugin
+
+### First Time Setup
+
+When you start Dev Proxy for the first time:
+
+1. **Trust the certificate**: Dev Proxy installs a certificate named "Dev Proxy CA". Select **Yes** to confirm installation.
+2. **Allow firewall access**: Windows Firewall will show a warning. Select **Allow access** to permit traffic through the firewall.
+
+Dev Proxy will display:
+```
+ info    Dev Proxy API listening on http://localhost:8897...
+ info    Dev Proxy Listening on 127.0.0.1:8000...
+
+Hotkeys: issue (w)eb request, (r)ecord, (s)top recording, (c)lear screen
+Press CTRL+C to stop Dev Proxy
+```
+
+**Important**: Always stop Dev Proxy using **Ctrl+C** to safely unregister it as the system proxy. Closing the terminal without stopping Dev Proxy may cause connection issues.
 
 ## Building the Plugin
 
@@ -96,6 +122,28 @@ devproxy --config-file devproxyrc.json
 
 # Or if devproxyrc.json is in the current directory
 devproxy
+
+# For beta version
+devproxy-beta --config-file devproxyrc.json
+```
+
+### Verifying Dev Proxy is Working
+
+Before using the plugin, confirm Dev Proxy is intercepting requests:
+
+```powershell
+# Test with Invoke-WebRequest (PowerShell)
+Invoke-WebRequest -Uri https://jsonplaceholder.typicode.com/posts
+
+# Or with curl
+curl -ikx http://localhost:8000 https://jsonplaceholder.typicode.com/posts
+```
+
+You should see output in the Dev Proxy terminal like:
+```
+ req   ╭ GET https://jsonplaceholder.typicode.com/posts
+ time  │ 1/31/2025 12:12:14 PM +00:00
+ api   ╰ Passed through
 ```
 
 ## How It Works
