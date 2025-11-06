@@ -4,6 +4,7 @@
   "description": "Comprehensive HTTP traffic recorder supporting 20+ test frameworks (Playwright, Jest, Pytest, JUnit, etc.) with automatic detection, Dev Proxy integration, and HAR file generation for debugging, mocking, and performance analysis",
   "version": "0.7.1",
   "publisher": "maxgolov",
+  "type": "module",
   "icon": "icon.png",
   "repository": {
     "type": "git",
@@ -232,7 +233,7 @@
     "vscode:prepublish": "npm run build",
     "build": "npm run build:extension && npm run build:mcp",
     "build:extension": "tsc -p ./",
-    "build:mcp": "node esbuild.mcp.js",
+    "build:mcp": "node esbuild.mcp.cjs",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run build",
     "test": "node ./dist/test/runTest.js",

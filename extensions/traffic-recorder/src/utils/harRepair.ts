@@ -1,7 +1,9 @@
 /**
- * Shared HAR file repair utilities
- * Handles common corruption patterns in HAR files using jsonrepair library
+ * Shared HAR file repair utility
+ * Handles common HAR file corruption patterns and uses jsonrepair for comprehensive fixes
  */
+
+import { jsonrepair } from 'jsonrepair';
 
 export interface RepairResult {
     success: boolean;
@@ -10,95 +12,74 @@ export interface RepairResult {
     repaired: boolean;
 }
 
-// Lazy-loaded jsonrepair module
-let jsonrepairModule: any = null;
-
-async function getJsonRepair(): Promise<any> {
-    if (!jsonrepairModule) {
-        jsonrepairModule = await import('jsonrepair');
-    }
-    return jsonrepairModule.jsonrepair;
-}
-
 /**
- * Repair corrupted HAR file content
- * Uses the jsonrepair library which handles:
- * - Missing closing braces/brackets
- * - Extra commas (}, , , {)
- * - Truncated JSON
- * - Missing quotes
- * - And many other JSON malformations
+ * Repairs malformed HAR file content using jsonrepair library
+ * @param content - The potentially malformed HAR JSON content
+ * @returns RepairResult with success status, repaired content, and metadata
  */
-export async function repairHARContent(content: string): Promise<RepairResult> {
+export function repairHARContent(content: string): RepairResult {
     try {
-        // First, check if it's already valid JSON
-        JSON.parse(content);
+        // Strip BOM if present
+        if (content.charCodeAt(0) === 0xFEFF) {
+            content = content.slice(1);
+        }
+
+        // Try to repair the JSON using jsonrepair
+        const repairedContent = jsonrepair(content);
+        
+        // Verify the repaired content is valid JSON
+        JSON.parse(repairedContent);
+        
         return {
             success: true,
-            content,
+            content: repairedContent,
+            repaired: repairedContent !== content
+        };
+    } catch (error) {
+        return {
+            success: false,
+            content: content,
+            error: error instanceof Error ? error.message : String(error),
             repaired: false
         };
-    } catch (parseError: any) {
-        // Content is malformed, attempt repair
-        try {
-            // Strip BOM (Byte Order Mark) if present
-            let cleanContent = content;
-            if (cleanContent.charCodeAt(0) === 0xFEFF) {
-                cleanContent = cleanContent.slice(1);
-            }
-
-            // Use jsonrepair to fix the content
-            const jsonrepair = await getJsonRepair();
-            const repaired = jsonrepair(cleanContent);
-            
-            // Verify the repair worked
-            JSON.parse(repaired);
-            
-            return {
-                success: true,
-                content: repaired,
-                repaired: true,
-                error: `Auto-repaired: ${parseError.message}`
-            };
-        } catch (repairError: any) {
-            // Repair failed
-            return {
-                success: false,
-                content,
-                repaired: false,
-                error: `Failed to repair: ${repairError.message}. Original error: ${parseError.message}`
-            };
-        }
     }
 }
 
 /**
- * Repair and parse HAR content in one step
+ * Repairs and parses HAR file content in one step
+ * @param content - The potentially malformed HAR JSON content
+ * @returns Object with success status, parsed HAR object (if successful), error message, and repair status
  */
-export async function repairAndParseHAR(content: string): Promise<{ success: boolean; har?: any; error?: string; repaired: boolean }> {
-    const result = await repairHARContent(content);
+export function repairAndParseHAR(content: string): {
+    success: boolean;
+    har: any | null;
+    error?: string;
+    repaired: boolean;
+} {
+    const repairResult = repairHARContent(content);
     
-    if (result.success) {
-        try {
-            const har = JSON.parse(result.content);
-            return {
-                success: true,
-                har,
-                repaired: result.repaired,
-                error: result.error
-            };
-        } catch (error: any) {
-            return {
-                success: false,
-                repaired: result.repaired,
-                error: `Parsing failed after repair: ${error.message}`
-            };
-        }
+    if (!repairResult.success) {
+        return {
+            success: false,
+            har: null,
+            error: repairResult.error,
+            repaired: false
+        };
     }
-    
-    return {
-        success: false,
-        repaired: false,
-        error: result.error
-    };
+
+    try {
+        const har = JSON.parse(repairResult.content);
+        return {
+            success: true,
+            har,
+            repaired: repairResult.repaired
+        };
+    } catch (error) {
+        return {
+            success: false,
+            har: null,
+            error: error instanceof Error ? error.message : String(error),
+            repaired: repairResult.repaired
+        };
+    }
 }

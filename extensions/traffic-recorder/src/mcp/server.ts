@@ -8,12 +8,13 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
-    CallToolRequestSchema,
-    ListToolsRequestSchema,
-    Tool,
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+  Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { readFile, readdir, stat, writeFile } from 'fs/promises';
 import { join, resolve } from 'path';
+import { repairHARContent } from '../utils/harRepair.js';
 import { HARParser } from './analyzer/HARParser.js';
 import { HARSearch } from './analyzer/HARSearch.js';
 import { HARStatistics } from './analyzer/HARStatistics.js';
@@ -518,7 +519,7 @@ class TrafficCopMCPServer {
     const content = await readFile(filePath, 'utf-8');
     
     // Use shared repair utility
-    const repairResult = await harRepairModule.repairHARContent(content);
+    const repairResult = repairHARContent(content);
     
     if (!repairResult.success) {
       throw new Error(`Failed to load HAR file: ${repairResult.error}`);
@@ -530,50 +531,6 @@ class TrafficCopMCPServer {
     }
     
     return HARParser.parse(repairResult.content);
-  }
-
-  /**
-   * Attempt to repair common HAR file corruption patterns
-   * @deprecated Use shared repairHARContent from utils/harRepair.ts instead
-   */
-  private repairHARContent(content: string): string {
-    let repaired = content;
-    
-    // Fix pattern: }, , , { (extra commas between entries)
-    repaired = repaired.replace(/\},\s*,+\s*\{/g, '},\n{');
-    
-    // Fix pattern: trailing commas before closing bracket
-    repaired = repaired.replace(/,(\s*\])/g, '$1');
-    
-    // Fix missing closing brackets/braces by counting
-    let openBraces = 0, closeBraces = 0;
-    let openBrackets = 0, closeBrackets = 0;
-    let inString = false, escapeNext = false;
-    
-    for (let i = 0; i < repaired.length; i++) {
-      const char = repaired[i];
-      if (escapeNext) { escapeNext = false; continue; }
-      if (char === '\\') { escapeNext = true; continue; }
-      if (char === '"' && !escapeNext) { inString = !inString; continue; }
-      if (inString) continue;
-      
-      if (char === '{') openBraces++;
-      else if (char === '}') closeBraces++;
-      else if (char === '[') openBrackets++;
-      else if (char === ']') closeBrackets++;
-    }
-    
-    const missingBrackets = openBrackets - closeBrackets;
-    const missingBraces = openBraces - closeBraces;
-    
-    if (missingBrackets > 0 || missingBraces > 0) {
-      repaired = repaired.trimEnd();
-      if (repaired.endsWith(',')) repaired = repaired.slice(0, -1);
-      for (let i = 0; i < missingBrackets; i++) repaired += '\n]';
-      for (let i = 0; i < missingBraces; i++) repaired += '\n}';
-    }
-    
-    return repaired;
   }
 
   /**
