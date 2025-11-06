@@ -52,42 +52,40 @@ jobs:
       - name: Get Version
         id: get_version
         run: |
-          # Get version from package.json
           VERSION=$(node -p "require('./extensions/traffic-recorder/package.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
       
       # ═══════════════════════════════════════════════════════════
-      # STEP 1: Build .NET Libraries
+      # STEP 1: Restore Dependencies (matches build.sh line 127-130)
       # ═══════════════════════════════════════════════════════════
       - name: Restore .NET dependencies
         run: |
-          dotnet restore HttpRecorder.sln
-          dotnet restore DevProxyExtension/HttpRecorder.DevProxy/HttpRecorder.DevProxy.csproj
+          dotnet restore HttpRecorder.sln --verbosity minimal
+          dotnet restore DevProxyExtension/HttpRecorder.DevProxy/HttpRecorder.DevProxy.csproj --verbosity minimal
       
+      - name: Restore Node.js dependencies
+        working-directory: extensions/traffic-recorder
+        run: npm ci
+      
+      # ═══════════════════════════════════════════════════════════
+      # STEP 2: Build .NET Libraries (matches build.sh line 177-184)
+      # HttpRecorder FIRST, then DevProxy (order matters!)
+      # ═══════════════════════════════════════════════════════════
       - name: Build HttpRecorder library
         run: dotnet build HttpRecorder/HttpRecorder.csproj --configuration ${{ env.CONFIGURATION }} --no-restore
       
       - name: Build HttpRecorder.DevProxy plugin
         run: dotnet build DevProxyExtension/HttpRecorder.DevProxy/HttpRecorder.DevProxy.csproj --configuration ${{ env.CONFIGURATION }} --no-restore
       
+      # ═══════════════════════════════════════════════════════════
+      # STEP 3: Run .NET Tests (matches build.sh line 186-196)
+      # ═══════════════════════════════════════════════════════════
       - name: Run .NET tests
         run: dotnet test HttpRecorder.Tests/HttpRecorder.Tests.csproj --configuration ${{ env.CONFIGURATION }} --no-build --framework net9.0 --logger "console;verbosity=minimal"
       
       # ═══════════════════════════════════════════════════════════
-      # STEP 2: Create NuGet Package
-      # ═══════════════════════════════════════════════════════════
-      - name: Create NuGet package
-        run: |
-          mkdir -p ./artifacts/nuget
-          dotnet pack DevProxyExtension/HttpRecorder.DevProxy/HttpRecorder.DevProxy.csproj \
-            --configuration ${{ env.CONFIGURATION }} \
-            --no-build \
-            --output ./artifacts/nuget \
-            /p:Version=${{ steps.get_version.outputs.version }}
-      
-      # ═══════════════════════════════════════════════════════════
-      # STEP 3: Build VS Code Extension with DLLs
+      # STEP 4: Copy .NET DLLs to Extension (matches build.sh line 198-220)
       # ═══════════════════════════════════════════════════════════
       - name: Copy .NET DLLs to extension plugins folder
         run: |
@@ -96,14 +94,17 @@ jobs:
           cp HttpRecorder/bin/${{ env.CONFIGURATION }}/net9.0/HttpRecorder.dll extensions/traffic-recorder/plugins/
           ls -la extensions/traffic-recorder/plugins/
       
-      - name: Install extension dependencies
-        working-directory: extensions/traffic-recorder
-        run: npm ci
-      
+      # ═══════════════════════════════════════════════════════════
+      # STEP 5: Build VS Code Extension (matches build.sh line 222-231)
+      # npm run build triggers prebuild which builds HAR viewer first
+      # ═══════════════════════════════════════════════════════════
       - name: Build extension (includes HAR viewer and MCP server)
         working-directory: extensions/traffic-recorder
         run: npm run build
       
+      # ═══════════════════════════════════════════════════════════
+      # STEP 6: Run Extension Tests (matches build.sh line 233-262)
+      # ═══════════════════════════════════════════════════════════
       - name: Run extension tests
         working-directory: extensions/traffic-recorder
         run: |
@@ -117,8 +118,17 @@ jobs:
           exit $TEST_EXIT
       
       # ═══════════════════════════════════════════════════════════
-      # STEP 4: Package Extension (VSIX)
+      # STEP 7: Create Packages (matches build.sh line 264-288)
       # ═══════════════════════════════════════════════════════════
+      - name: Create NuGet package
+        run: |
+          mkdir -p ./artifacts/nuget
+          dotnet pack DevProxyExtension/HttpRecorder.DevProxy/HttpRecorder.DevProxy.csproj \
+            --configuration ${{ env.CONFIGURATION }} \
+            --no-build \
+            --output ./artifacts/nuget \
+            /p:Version=${{ steps.get_version.outputs.version }}
+      
       - name: Package VSIX
         working-directory: extensions/traffic-recorder
         run: |
@@ -126,7 +136,7 @@ jobs:
           npx @vscode/vsce package --out ../../artifacts/vsix/traffic-cop-${{ steps.get_version.outputs.version }}.vsix
       
       # ═══════════════════════════════════════════════════════════
-      # STEP 5: Upload Artifacts
+      # STEP 8: Upload Artifacts
       # ═══════════════════════════════════════════════════════════
       - name: Upload NuGet package
         uses: actions/upload-artifact@v4
@@ -182,8 +192,6 @@ jobs:
         run: |
           VERSION=${{ needs.build.outputs.version }}
           sed -i "s/traffic-cop-[0-9]\+\.[0-9]\+\.[0-9]\+\.vsix/traffic-cop-$VERSION.vsix/g" README.md
-          
-          # Show the changes
           git diff README.md
       
       - name: Create/Update Git Tag
@@ -191,8 +199,6 @@ jobs:
           VERSION=${{ needs.build.outputs.version }}
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Create or update tag
           git tag -fa "v$VERSION" -m "Release v$VERSION"
           git push origin "v$VERSION" --force
       
@@ -215,11 +221,6 @@ jobs:
           **Dev Proxy Plugin (NuGet):**
           ```bash
           dotnet add package HttpRecorder.DevProxy --version $VERSION
-          ```
-          
-          Or via NuGet Package Manager:
-          ```
-          Install-Package HttpRecorder.DevProxy -Version $VERSION
           ```
           
           ### ✨ What's Included
@@ -248,13 +249,7 @@ jobs:
           - [Extension Documentation](https://github.com/maxgolov/HttpRecorderNext/tree/master/extensions/traffic-recorder)
           - [Dev Proxy Plugin Guide](https://github.com/maxgolov/HttpRecorderNext/tree/master/DevProxyExtension)
           - [.NET Library Examples](https://github.com/maxgolov/HttpRecorderNext#net-library-quick-start)
-          
-          ### 🐛 Bug Reports & Feature Requests
-          
-          Please submit issues at: https://github.com/maxgolov/HttpRecorderNext/issues
           EOF
-          
-          # Replace $VERSION placeholder
           sed -i "s/\$VERSION/$VERSION/g" release_notes.md
       
       - name: Create GitHub Release
@@ -270,38 +265,14 @@ jobs:
             release-artifacts/*.vsix
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      # ═══════════════════════════════════════════════════════════
-      # Optional: Publish to NuGet.org (uncomment when ready)
-      # ═══════════════════════════════════════════════════════════
-      # - name: Publish to NuGet.org
-      #   if: startsWith(github.ref, 'refs/tags/v')
-      #   run: |
-      #     dotnet nuget push release-artifacts/*.nupkg \
-      #       --api-key ${{ secrets.NUGET_API_KEY }} \
-      #       --source https://api.nuget.org/v3/index.json \
-      #       --skip-duplicate
-      
-      # ═══════════════════════════════════════════════════════════
-      # Optional: Publish to VS Code Marketplace (uncomment when ready)
-      # ═══════════════════════════════════════════════════════════
-      # - name: Publish to VS Code Marketplace
-      #   if: startsWith(github.ref, 'refs/tags/v')
-      #   working-directory: extensions/traffic-recorder
-      #   run: |
-      #     npx @vscode/vsce publish --packagePath ../../release-artifacts/traffic-cop-${{ needs.build.outputs.version }}.vsix -p ${{ secrets.VSCE_PAT }}
 
   # ═══════════════════════════════════════════════════════════
-  # Test Installation on Multiple Platforms
+  # Test Installation on Ubuntu
   # ═══════════════════════════════════════════════════════════
   test-installation:
-    name: Test Installation - ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: Test Installation - Ubuntu
+    runs-on: ubuntu-latest
     needs: build
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest]  # Focus on Ubuntu as requested
     
     steps:
       - name: Setup Node.js
