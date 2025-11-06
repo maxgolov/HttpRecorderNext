@@ -249,6 +249,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",
     "execa": "^9.6.0",
+    "jsonrepair": "^3.13.1",
     "tree-kill": "^1.2.2",
     "zod": "^3.24.1"
   },

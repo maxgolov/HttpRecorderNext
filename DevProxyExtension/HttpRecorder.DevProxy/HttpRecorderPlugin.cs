@@ -379,7 +379,8 @@ public sealed class HttpRecorderPlugin(
                 // Add comma before entry if not first
                 if (!_firstEntry)
                 {
-                    _harFileWriter.WriteLine(",");
+                    // Use WriteAsync instead of WriteLine to avoid overflow with large files
+                    _harFileWriter.WriteAsync(",\n").GetAwaiter().GetResult();
                 }
                 _firstEntry = false;
             }

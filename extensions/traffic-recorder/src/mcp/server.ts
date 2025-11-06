@@ -8,9 +8,9 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-  Tool,
+    CallToolRequestSchema,
+    ListToolsRequestSchema,
+    Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { readFile, readdir, stat, writeFile } from 'fs/promises';
 import { join, resolve } from 'path';
@@ -515,36 +515,26 @@ class TrafficCopMCPServer {
     }
 
     const filePath = await this.resolveFilePath(filename);
-    let content = await readFile(filePath, 'utf-8');
+    const content = await readFile(filePath, 'utf-8');
     
-    // Strip BOM (Byte Order Mark) if present - \uFEFF at start
-    if (content.charCodeAt(0) === 0xFEFF) {
-      content = content.slice(1);
+    // Use shared repair utility
+    const repairResult = await harRepairModule.repairHARContent(content);
+    
+    if (!repairResult.success) {
+      throw new Error(`Failed to load HAR file: ${repairResult.error}`);
     }
     
-    // Try to parse - if it fails, attempt auto-repair
-    try {
-      return HARParser.parse(content);
-    } catch (parseError) {
-      // Attempt auto-repair for common issues
-      const repaired = this.repairHARContent(content);
-      if (repaired !== content) {
-        try {
-          const har = HARParser.parse(repaired);
-          // Auto-save the repaired version
-          await writeFile(filePath, repaired, 'utf-8');
-          return har;
-        } catch {
-          // If repair didn't work, throw original error
-          throw parseError;
-        }
-      }
-      throw parseError;
+    // If repaired, save the fixed version
+    if (repairResult.repaired) {
+      await writeFile(filePath, repairResult.content, 'utf-8');
     }
+    
+    return HARParser.parse(repairResult.content);
   }
 
   /**
    * Attempt to repair common HAR file corruption patterns
+   * @deprecated Use shared repairHARContent from utils/harRepair.ts instead
    */
   private repairHARContent(content: string): string {
     let repaired = content;
