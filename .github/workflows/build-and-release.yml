@@ -78,6 +78,9 @@ jobs:
       - name: Build HttpRecorder.DevProxy plugin
         run: dotnet build DevProxyExtension/HttpRecorder.DevProxy/HttpRecorder.DevProxy.csproj --configuration ${{ env.CONFIGURATION }} --no-restore
       
+      - name: Build HttpRecorder.Tests
+        run: dotnet build HttpRecorder.Tests/HttpRecorder.Tests.csproj --configuration ${{ env.CONFIGURATION }} --no-restore
+      
       # ═══════════════════════════════════════════════════════════
       # STEP 3: Run .NET Tests (matches build.sh line 186-196)
       # ═══════════════════════════════════════════════════════════
