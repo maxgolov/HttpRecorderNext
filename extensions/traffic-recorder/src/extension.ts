@@ -1675,8 +1675,30 @@ function getDevProxyInstallationPaths(useBeta: boolean): string[] {
     const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
     const localAppData = process.env.LOCALAPPDATA || path.join(userProfile, 'AppData', 'Local');
     
+    // Standalone installer locations (most common)
+    const programName = useBeta ? 'Dev Proxy Beta' : 'Dev Proxy';
+    paths.push(path.join(localAppData, 'Programs', programName));
+    paths.push(path.join(programFiles, programName));
+    
     // Winget installs to user profile by default
-    paths.push(path.join(localAppData, 'Microsoft', 'WinGet', 'Packages', useBeta ? 'DevProxy.DevProxy.Beta_Microsoft.Winget.Source_8wekyb3d8bbwe' : 'DevProxy.DevProxy_Microsoft.Winget.Source_8wekyb3d8bbwe'));
+    // Look for any directory matching the pattern (hash can vary)
+    const wingetPackagesDir = path.join(localAppData, 'Microsoft', 'WinGet', 'Packages');
+    if (fs.existsSync(wingetPackagesDir)) {
+      try {
+        const prefix = useBeta ? 'DevProxy.DevProxy.Beta_' : 'DevProxy.DevProxy_';
+        const packages = fs.readdirSync(wingetPackagesDir);
+        for (const pkg of packages) {
+          if (pkg.startsWith(prefix)) {
+            paths.push(path.join(wingetPackagesDir, pkg));
+          }
+        }
+      } catch {
+        // Fallback to hardcoded paths
+        paths.push(path.join(localAppData, 'Microsoft', 'WinGet', 'Packages', useBeta ? 'DevProxy.DevProxy.Beta_Microsoft.Winget.Source_8wekyb3d8bbwe' : 'DevProxy.DevProxy_Microsoft.Winget.Source_8wekyb3d8bbwe'));
+      }
+    }
+    
+    // WinGet Links directory (symlinks to executables)
     paths.push(path.join(localAppData, 'Microsoft', 'WinGet', 'Links'));
     
     // Chocolatey installation
