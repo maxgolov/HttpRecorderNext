@@ -626,6 +626,61 @@ export function deactivate() {
 }
 
 /**
+ * Show Dev Proxy installation guide in markdown
+ */
+async function showDevProxyInstallationGuide(useBeta: boolean) {
+  const extensionPath = getExtensionDirectory();
+  const installGuidePath = path.join(extensionPath, 'docs', 'install-dev-proxy.md');
+  
+  try {
+    // Open the markdown document
+    const uri = vscode.Uri.file(installGuidePath);
+    const doc = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(doc, {
+      viewColumn: vscode.ViewColumn.Beside,
+      preview: true
+    });
+    
+    // Also show a notification with quick actions
+    const useBetaText = useBeta ? ' Beta' : '';
+    const action = await vscode.window.showErrorMessage(
+      `Dev Proxy${useBetaText} is not found. Installation guide has been opened.`,
+      'Try Auto-Install',
+      'Check Again',
+      'Close'
+    );
+    
+    if (action === 'Try Auto-Install') {
+      await installDevProxy();
+    } else if (action === 'Check Again') {
+      const isNowInstalled = await isDevProxyInstalled();
+      if (isNowInstalled) {
+        vscode.window.showInformationMessage('Dev Proxy is now detected! You can try starting it again.');
+      } else {
+        vscode.window.showWarningMessage(
+          'Dev Proxy is still not detected. Please follow the installation guide and restart VS Code after installation.'
+        );
+      }
+    }
+  } catch (error) {
+    // Fallback if markdown file doesn't exist
+    const useBetaText = useBeta ? ' Beta' : '';
+    const action = await vscode.window.showErrorMessage(
+      `Failed to start Dev Proxy${useBetaText}: Command not found.\n\n` +
+      `Please install Dev Proxy and restart VS Code.`,
+      'Open Official Guide',
+      'Try Auto-Install'
+    );
+    
+    if (action === 'Open Official Guide') {
+      vscode.env.openExternal(vscode.Uri.parse('https://learn.microsoft.com/microsoft-cloud/dev/dev-proxy/get-started'));
+    } else if (action === 'Try Auto-Install') {
+      await installDevProxy();
+    }
+  }
+}
+
+/**
  * Start Dev Proxy command
  */
 async function startProxy() {
@@ -672,37 +727,12 @@ async function startProxy() {
     // Check if Dev Proxy is installed
     const isInstalled = await isDevProxyInstalled();
     if (!isInstalled) {
-      const useBetaText = useBeta ? ' (Beta)' : '';
-      const installPaths = getDevProxyInstallationPaths(useBeta);
-      const pathsText = installPaths.slice(0, 3).join('\n  • ');
+      await showDevProxyInstallationGuide(useBeta);
       
-      const install = await vscode.window.showErrorMessage(
-        `Dev Proxy${useBetaText} is not found in PATH or common installation locations.\n\n` +
-        `Expected locations:\n  • ${pathsText}\n\n` +
-        `Would you like to install it now?`,
-        { modal: true },
-        'Install',
-        'Manual Instructions'
-      );
-      
-      if (install === 'Install') {
-        await installDevProxy();
-        
-        // Check again after installation
-        const isNowInstalled = await isDevProxyInstalled();
-        if (!isNowInstalled) {
-          vscode.window.showErrorMessage(
-            'Dev Proxy installation completed but the command is still not found. ' +
-            'Please restart VS Code or add Dev Proxy to your system PATH manually.'
-          );
-          return;
-        }
-      } else if (install === 'Manual Instructions') {
-        const installUrl = 'https://learn.microsoft.com/microsoft-cloud/dev/dev-proxy/get-started';
-        vscode.env.openExternal(vscode.Uri.parse(installUrl));
-        return;
-      } else {
-        return;
+      // Check again after user has had chance to install
+      const isNowInstalled = await isDevProxyInstalled();
+      if (!isNowInstalled) {
+        return; // User chose not to install or installation failed
       }
     }
 
@@ -856,25 +886,7 @@ async function startProxy() {
       
       // Show helpful error message
       if (error.message.includes('ENOENT') || error.message.includes('not found')) {
-        const useBetaText = useBeta ? ' Beta' : '';
-        vscode.window.showErrorMessage(
-          `Failed to start Dev Proxy${useBetaText}: Command not found.\n\n` +
-          `Please ensure Dev Proxy is installed and added to your system PATH, or restart VS Code.\n\n` +
-          `Install from: https://learn.microsoft.com/microsoft-cloud/dev/dev-proxy/get-started`,
-          'Open Install Guide',
-          'Check Installation'
-        ).then(async (action) => {
-          if (action === 'Open Install Guide') {
-            vscode.env.openExternal(vscode.Uri.parse('https://learn.microsoft.com/microsoft-cloud/dev/dev-proxy/get-started'));
-          } else if (action === 'Check Installation') {
-            const isNowInstalled = await isDevProxyInstalled();
-            if (isNowInstalled) {
-              vscode.window.showInformationMessage('Dev Proxy is now detected. Try starting it again.');
-            } else {
-              vscode.window.showWarningMessage('Dev Proxy is still not detected. Please check your installation.');
-            }
-          }
-        });
+        showDevProxyInstallationGuide(useBeta);
       }
     });
 
