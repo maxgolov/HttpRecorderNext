@@ -40,7 +40,7 @@ A comprehensive HTTP traffic recording ecosystem that captures complete request/
 
 **Install:**
 ```bash
-code --install-extension traffic-cop-0.7.0.vsix
+code --install-extension traffic-cop-0.7.2.vsix
 ```
 
 **Use:**
@@ -178,13 +178,15 @@ Traffic Cop auto-detects 20+ frameworks:
 
 ---
 
-## 📈 What's New in v0.7.0
+## 📈 What's New in v0.7.2
 
-- 🎭 Renamed to "Traffic Cop" with professional branding
-- 🔍 Auto-detection for 20+ test frameworks (up from 15)
-- 🧪 102 tests passing (74 .NET + 28 TypeScript)
-- 🏗️ Refactored architecture with template method pattern
-- 📚 Enhanced documentation and roadmap
+- � **Dev Proxy Path Detection** - Automatic detection in common install locations (Windows/macOS/Linux)
+- 🛠️ **Enhanced Error Handling** - Interactive installation guide with OS-specific instructions
+- 📚 **Installation Guide** - Comprehensive Markdown guide displayed in VS Code
+- 🔄 **Smart Restart Prompt** - Suggests VS Code restart after Dev Proxy installation
+- 🐛 **Build Fixes** - HAR viewer (React 19), extension tests, Ubuntu 24.04 compatibility
+
+[See full changelog](https://github.com/maxgolov/HttpRecorderNext/releases/tag/v0.7.2)
 
 ---
 
