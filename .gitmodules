@@ -13,3 +13,6 @@
 [submodule "external/dev-proxy-tools-toolkit"]
 	path = external/dev-proxy-tools-toolkit
 	url = https://github.com/dev-proxy-tools/toolkit
+[submodule "external/devtools-frontend"]
+	path = external/devtools-frontend
+	url = https://github.com/ChromeDevTools/devtools-frontend

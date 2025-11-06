@@ -1,9 +1,10 @@
 {
-  "name": "traffic-recorder",
-  "displayName": "Traffic Recorder for Dev Proxy",
-  "description": "VS Code extension to record HTTP traffic using Dev Proxy and Playwright",
-  "version": "0.5.0",
+  "name": "traffic-cop",
+  "displayName": "Traffic Cop: HTTP Traffic Recorder for Test Automation",
+  "description": "Comprehensive HTTP traffic recorder supporting 20+ test frameworks (Playwright, Jest, Pytest, JUnit, etc.) with automatic detection, Dev Proxy integration, and HAR file generation for debugging, mocking, and performance analysis",
+  "version": "0.7.1",
   "publisher": "maxgolov",
+  "icon": "icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/maxgolov/HttpRecorderNext.git"
@@ -18,15 +19,26 @@
     "Other"
   ],
   "keywords": [
+    "traffic-recorder",
+    "http-proxy",
     "dev-proxy",
     "playwright",
+    "jest",
+    "vitest",
+    "pytest",
+    "junit",
     "har",
     "http",
     "recording",
     "testing",
     "devtools",
     "network",
-    "proxy"
+    "proxy",
+    "e2e",
+    "integration-testing",
+    "test-automation",
+    "network-capture",
+    "traffic-analysis"
   ],
   "extensionDependencies": [],
   "extensionPack": [],
@@ -40,35 +52,66 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "trafficCopMcp",
+        "label": "Traffic Cop - HAR Analysis"
+      }
+    ],
     "commands": [
       {
         "command": "traffic-recorder.startProxy",
-        "title": "Traffic Recorder: Start Dev Proxy",
+        "title": "Traffic Cop: Start Dev Proxy",
         "icon": "$(record)"
       },
       {
         "command": "traffic-recorder.stopProxy",
-        "title": "Traffic Recorder: Stop Dev Proxy",
+        "title": "Traffic Cop: Stop Dev Proxy",
         "icon": "$(debug-stop)"
       },
       {
         "command": "traffic-recorder.runTests",
-        "title": "Traffic Recorder: Run All Tests",
+        "title": "Traffic Cop: Run All Tests",
         "icon": "$(play)"
       },
       {
+        "command": "traffic-recorder.runPlaywrightTests",
+        "title": "Traffic Cop: Record Playwright Tests",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "traffic-recorder.runVitestTests",
+        "title": "Traffic Cop: Record Vitest Tests",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "traffic-recorder.runNpmTests",
+        "title": "Traffic Cop: Record npm Tests",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "traffic-recorder.runPytestTests",
+        "title": "Traffic Cop: Record pytest Tests",
+        "icon": "$(beaker)"
+      },
+      {
         "command": "traffic-recorder.installDevProxy",
-        "title": "Traffic Recorder: Install Dev Proxy",
+        "title": "Traffic Cop: Install Dev Proxy",
         "icon": "$(cloud-download)"
       },
       {
         "command": "trafficRecorder.previewHAR",
-        "title": "Traffic Recorder: Preview HAR File",
+        "title": "Traffic Cop: Preview HAR File",
         "icon": "$(open-preview)"
       },
       {
+        "command": "trafficRecorder.openRawHAR",
+        "title": "Traffic Cop: Open HAR as JSON",
+        "icon": "$(file-code)"
+      },
+      {
         "command": "traffic-recorder.runCurrentTest",
-        "title": "Traffic Recorder: Run Current Test File",
+        "title": "Traffic Cop: Run Current Test File",
         "icon": "$(run)"
       }
     ],
@@ -78,6 +121,11 @@
           "when": "resourceExtname == .har",
           "command": "trafficRecorder.previewHAR",
           "group": "navigation"
+        },
+        {
+          "when": "resourceExtname == .har",
+          "command": "trafficRecorder.openRawHAR",
+          "group": "1_open"
         }
       ],
       "editor/title": [
@@ -87,12 +135,29 @@
           "group": "navigation"
         },
         {
+          "when": "resourceExtname == .har",
+          "command": "trafficRecorder.openRawHAR",
+          "group": "navigation"
+        },
+        {
           "when": "resourceFilename =~ /\\.(spec|test)\\.ts$/ && editorLangId == typescript",
           "command": "traffic-recorder.runCurrentTest",
           "group": "navigation"
         }
       ]
     },
+    "customEditors": [
+      {
+        "viewType": "trafficRecorder.harViewer",
+        "displayName": "HAR Viewer",
+        "selector": [
+          {
+            "filenamePattern": "*.har"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
     "views": {
       "explorer": [
         {
@@ -117,7 +182,7 @@
         },
         "trafficRecorder.devProxyPort": {
           "type": "number",
-          "default": 8000,
+          "default": 8080,
           "description": "Port for Dev Proxy to listen on"
         },
         "trafficRecorder.outputDirectory": {
@@ -129,6 +194,11 @@
           "type": "boolean",
           "default": false,
           "description": "Automatically start Dev Proxy when running tests"
+        },
+        "trafficRecorder.autoDetectFrameworks": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Automatically detect test frameworks in workspace. When enabled, the extension will scan for 20+ popular test frameworks (Playwright, Jest, Vitest, Pytest, JUnit, etc.) and show quick-run buttons in the sidebar."
         },
         "trafficRecorder.useBetaVersion": {
           "type": "boolean",
@@ -160,7 +230,9 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
-    "build": "tsc -p ./",
+    "build": "npm run build:extension && npm run build:mcp",
+    "build:extension": "tsc -p ./",
+    "build:mcp": "node esbuild.mcp.js",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run build",
     "test": "node ./dist/test/runTest.js",
@@ -168,16 +240,21 @@
     "test:ui": "vitest --ui",
     "test:playwright": "playwright test",
     "lint": "eslint src --ext ts",
-    "package": "vsce package",
+    "prebuild": "npm run build-plugin",
+    "build-plugin": "dotnet build ../../DevProxyExtension/HttpRecorder.DevProxy/HttpRecorder.DevProxy.csproj -c Release && pwsh -Command \"Copy-Item '../../DevProxyExtension/HttpRecorder.DevProxy/bin/Release/net9.0/HttpRecorder.DevProxy.dll' './plugins/' -Force; Copy-Item '../../HttpRecorder/bin/Release/net9.0/HttpRecorder.dll' './plugins/' -Force\"",
+    "package": "npm run build-plugin && vsce package",
     "install-extension": "code --install-extension traffic-recorder-0.1.0.vsix",
     "copy-scripts": "node ./scripts/copy-to-user-dir.js"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
     "execa": "^9.6.0",
-    "tree-kill": "^1.2.2"
+    "tree-kill": "^1.2.2",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
+    "@rollup/rollup-win32-x64-msvc": "^4.52.5",
     "@types/glob": "^9.0.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^24.10.0",
@@ -187,11 +264,12 @@
     "@vitest/ui": "^4.0.7",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.6.2",
+    "esbuild": "^0.25.12",
     "eslint": "^9.39.1",
     "glob": "^11.0.3",
     "mocha": "^11.7.5",
     "typescript": "^5.9.3",
-    "vite": "^7.1.12",
+    "vite": "^7.2.1",
     "vitest": "^4.0.7"
   }
 }
