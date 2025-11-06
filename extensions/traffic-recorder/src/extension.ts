@@ -672,14 +672,35 @@ async function startProxy() {
     // Check if Dev Proxy is installed
     const isInstalled = await isDevProxyInstalled();
     if (!isInstalled) {
-      const install = await vscode.window.showWarningMessage(
-        'Dev Proxy is not installed. Would you like to install it?',
+      const useBetaText = useBeta ? ' (Beta)' : '';
+      const installPaths = getDevProxyInstallationPaths(useBeta);
+      const pathsText = installPaths.slice(0, 3).join('\n  • ');
+      
+      const install = await vscode.window.showErrorMessage(
+        `Dev Proxy${useBetaText} is not found in PATH or common installation locations.\n\n` +
+        `Expected locations:\n  • ${pathsText}\n\n` +
+        `Would you like to install it now?`,
+        { modal: true },
         'Install',
-        'Cancel'
+        'Manual Instructions'
       );
       
       if (install === 'Install') {
         await installDevProxy();
+        
+        // Check again after installation
+        const isNowInstalled = await isDevProxyInstalled();
+        if (!isNowInstalled) {
+          vscode.window.showErrorMessage(
+            'Dev Proxy installation completed but the command is still not found. ' +
+            'Please restart VS Code or add Dev Proxy to your system PATH manually.'
+          );
+          return;
+        }
+      } else if (install === 'Manual Instructions') {
+        const installUrl = 'https://learn.microsoft.com/microsoft-cloud/dev/dev-proxy/get-started';
+        vscode.env.openExternal(vscode.Uri.parse(installUrl));
+        return;
       } else {
         return;
       }
@@ -771,12 +792,20 @@ async function startProxy() {
 
     outputChannel.appendLine(`Command: ${devProxyCommand} ${args.join(' ')}`);
     outputChannel.appendLine(`Working directory: ${workspaceConfigDir}`);
+    
+    // Get augmented environment with Dev Proxy paths
+    const spawnEnv = getAugmentedEnvironment(useBeta);
+    const devProxyPath = findDevProxyExecutable(useBeta);
+    if (devProxyPath) {
+      outputChannel.appendLine(`Found Dev Proxy in: ${devProxyPath}`);
+    }
     outputChannel.appendLine('');
 
     proxyProcess = spawn(devProxyCommand, args, {
       cwd: workspaceConfigDir, // Run from .http-recorder so relative paths work
       shell: true, // Use shell to resolve command in PATH
-      windowsHide: false
+      windowsHide: false,
+      env: spawnEnv // Use augmented environment with Dev Proxy paths
     });
 
     // Handle process output
@@ -824,6 +853,29 @@ async function startProxy() {
       devProxyState.process = null;
       treeDataProvider.refresh();
       updateStatusBar();
+      
+      // Show helpful error message
+      if (error.message.includes('ENOENT') || error.message.includes('not found')) {
+        const useBetaText = useBeta ? ' Beta' : '';
+        vscode.window.showErrorMessage(
+          `Failed to start Dev Proxy${useBetaText}: Command not found.\n\n` +
+          `Please ensure Dev Proxy is installed and added to your system PATH, or restart VS Code.\n\n` +
+          `Install from: https://learn.microsoft.com/microsoft-cloud/dev/dev-proxy/get-started`,
+          'Open Install Guide',
+          'Check Installation'
+        ).then(async (action) => {
+          if (action === 'Open Install Guide') {
+            vscode.env.openExternal(vscode.Uri.parse('https://learn.microsoft.com/microsoft-cloud/dev/dev-proxy/get-started'));
+          } else if (action === 'Check Installation') {
+            const isNowInstalled = await isDevProxyInstalled();
+            if (isNowInstalled) {
+              vscode.window.showInformationMessage('Dev Proxy is now detected. Try starting it again.');
+            } else {
+              vscode.window.showWarningMessage('Dev Proxy is still not detected. Please check your installation.');
+            }
+          }
+        });
+      }
     });
 
     proxyProcess.on('exit', (code) => {
@@ -1407,6 +1459,125 @@ async function runCurrentTest() {
 }
 
 /**
+ * Get common Dev Proxy installation paths based on platform
+ */
+function getDevProxyInstallationPaths(useBeta: boolean): string[] {
+  const paths: string[] = [];
+  
+  if (process.platform === 'win32') {
+    // Windows installation paths
+    const userProfile = process.env.USERPROFILE || process.env.HOME || '';
+    const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+    const localAppData = process.env.LOCALAPPDATA || path.join(userProfile, 'AppData', 'Local');
+    
+    // Winget installs to user profile by default
+    paths.push(path.join(localAppData, 'Microsoft', 'WinGet', 'Packages', useBeta ? 'DevProxy.DevProxy.Beta_Microsoft.Winget.Source_8wekyb3d8bbwe' : 'DevProxy.DevProxy_Microsoft.Winget.Source_8wekyb3d8bbwe'));
+    paths.push(path.join(localAppData, 'Microsoft', 'WinGet', 'Links'));
+    
+    // Chocolatey installation
+    paths.push(path.join(programFiles, 'dev-proxy'));
+    paths.push('C:\\ProgramData\\chocolatey\\lib\\dev-proxy\\tools');
+    
+    // Manual installation in user profile
+    paths.push(path.join(userProfile, '.dev-proxy'));
+    paths.push(path.join(userProfile, 'dev-proxy'));
+    
+    // dotnet tool global installation
+    paths.push(path.join(userProfile, '.dotnet', 'tools'));
+    
+  } else if (process.platform === 'darwin') {
+    // macOS installation paths
+    const home = process.env.HOME || '';
+    
+    // Homebrew installation
+    paths.push('/usr/local/bin');
+    paths.push('/opt/homebrew/bin');
+    
+    // dotnet tool global installation
+    paths.push(path.join(home, '.dotnet', 'tools'));
+    
+    // Manual installation
+    paths.push(path.join(home, '.dev-proxy'));
+    paths.push('/usr/local/share/dev-proxy');
+    
+  } else {
+    // Linux installation paths
+    const home = process.env.HOME || '';
+    
+    // System-wide installation
+    paths.push('/usr/local/bin');
+    paths.push('/usr/bin');
+    
+    // dotnet tool global installation
+    paths.push(path.join(home, '.dotnet', 'tools'));
+    
+    // Manual installation
+    paths.push(path.join(home, '.dev-proxy'));
+    paths.push(path.join(home, '.local', 'bin'));
+    paths.push('/opt/dev-proxy');
+  }
+  
+  return paths;
+}
+
+/**
+ * Find Dev Proxy executable in common installation locations
+ * Returns the directory containing the executable, or null if not found
+ */
+function findDevProxyExecutable(useBeta: boolean): string | null {
+  const command = useBeta ? 'devproxy-beta' : 'devproxy';
+  const executableName = process.platform === 'win32' ? `${command}.exe` : command;
+  
+  const searchPaths = getDevProxyInstallationPaths(useBeta);
+  
+  for (const searchPath of searchPaths) {
+    const fullPath = path.join(searchPath, executableName);
+    if (fs.existsSync(fullPath)) {
+      try {
+        // Check if file is executable (on Unix-like systems)
+        if (process.platform !== 'win32') {
+          const stats = fs.statSync(fullPath);
+          if (!(stats.mode & 0o111)) {
+            continue; // Not executable
+          }
+        }
+        return searchPath;
+      } catch {
+        continue;
+      }
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Get augmented environment with Dev Proxy paths
+ */
+function getAugmentedEnvironment(useBeta: boolean): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  
+  // Try to find Dev Proxy in common locations
+  const devProxyPath = findDevProxyExecutable(useBeta);
+  
+  if (devProxyPath) {
+    // Add to PATH
+    const pathSeparator = process.platform === 'win32' ? ';' : ':';
+    const currentPath = env.PATH || env.Path || '';
+    
+    // Only add if not already in PATH
+    if (!currentPath.split(pathSeparator).includes(devProxyPath)) {
+      env.PATH = devProxyPath + pathSeparator + currentPath;
+      if (process.platform === 'win32') {
+        env.Path = env.PATH; // Windows uses both PATH and Path
+      }
+    }
+  }
+  
+  return env;
+}
+
+/**
  * Install Dev Proxy command
  */
 async function installDevProxy() {
@@ -1458,7 +1629,12 @@ async function installDevProxy() {
       }
     }
 
-    vscode.window.showInformationMessage('Dev Proxy installed successfully!');
+    const restartMessage = 'Dev Proxy installed successfully! You may need to restart VS Code for PATH changes to take effect.';
+    const action = await vscode.window.showInformationMessage(restartMessage, 'Restart Now', 'Later');
+    
+    if (action === 'Restart Now') {
+      vscode.commands.executeCommand('workbench.action.reloadWindow');
+    }
 
   } catch (error: any) {
     vscode.window.showErrorMessage(`Failed to install Dev Proxy: ${error.message}`);
@@ -1472,8 +1648,23 @@ async function isDevProxyInstalled(): Promise<boolean> {
   const useBeta = vscode.workspace.getConfiguration('trafficRecorder').get<boolean>('useBetaVersion', true);
   const command = useBeta ? 'devproxy-beta' : 'devproxy';
   
+  // First try with augmented environment (check common locations)
+  const devProxyPath = findDevProxyExecutable(useBeta);
+  if (devProxyPath) {
+    const executableName = process.platform === 'win32' ? `${command}.exe` : command;
+    const fullPath = path.join(devProxyPath, executableName);
+    try {
+      await execFileAsync(fullPath, ['--version']);
+      return true;
+    } catch {
+      // Executable exists but failed to run
+      return false;
+    }
+  }
+  
+  // Try without path (check if it's in system PATH)
   try {
-    await execFileAsync(command, ['--version']);
+    await execFileAsync(command, ['--version'], { env: getAugmentedEnvironment(useBeta) });
     return true;
   } catch {
     return false;
@@ -1555,8 +1746,11 @@ function getFramework(frameworks: DiscoveredTestFrameworks, name: string): TestF
 function getProxyEnvironment(): NodeJS.ProcessEnv {
   const proxyUrl = `http://${devProxyState.host}:${devProxyState.port}`;
   
+  // Start with augmented environment that includes Dev Proxy paths
+  const baseEnv = getAugmentedEnvironment(devProxyState.useBeta);
+  
   return {
-    ...process.env,
+    ...baseEnv,
     HTTP_PROXY: proxyUrl,
     HTTPS_PROXY: proxyUrl,
     http_proxy: proxyUrl,
