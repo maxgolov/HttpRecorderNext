@@ -3,7 +3,8 @@ const esbuild = require('esbuild');
 const production = process.argv.includes('--production');
 
 async function main() {
-  const ctx = await esbuild.context({
+  // Build the test runner
+  const runnerCtx = await esbuild.context({
     entryPoints: ['src/test/runTest.ts'],
     bundle: true,
     format: 'cjs',
@@ -23,8 +24,32 @@ async function main() {
     logLevel: 'info',
   });
 
-  await ctx.rebuild();
-  await ctx.dispose();
+  await runnerCtx.rebuild();
+  await runnerCtx.dispose();
+
+  // Build the test suite
+  const suiteCtx = await esbuild.context({
+    entryPoints: ['src/test/suite/index.ts'],
+    bundle: true,
+    format: 'cjs',
+    minify: production,
+    sourcemap: !production,
+    sourcesContent: false,
+    platform: 'node',
+    outfile: 'dist/test/suite/index.js',
+    external: [
+      'vscode',
+      'mocha',
+      '@vscode/test-electron',
+      // Node.js built-in modules
+      'fs', 'path', 'child_process', 'util', 'net', 'tls', 'crypto',
+      'http', 'https', 'stream', 'events', 'url', 'os', 'assert'
+    ],
+    logLevel: 'info',
+  });
+
+  await suiteCtx.rebuild();
+  await suiteCtx.dispose();
 }
 
 main().catch(e => {
