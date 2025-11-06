@@ -595,6 +595,16 @@ export function activate(context: vscode.ExtensionContext) {
       statusBarItem.command = 'traffic-recorder.stopProxy';
       statusBarItem.tooltip = 'Stop Dev Proxy';
       statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+    } else if (devProxyState.status === 'starting') {
+      statusBarItem.text = `$(sync~spin) Dev Proxy (Starting...)`;
+      statusBarItem.command = undefined;
+      statusBarItem.tooltip = 'Dev Proxy is starting...';
+      statusBarItem.backgroundColor = undefined;
+    } else if (devProxyState.status === 'stopping') {
+      statusBarItem.text = `$(sync~spin) Dev Proxy (Stopping...)`;
+      statusBarItem.command = undefined;
+      statusBarItem.tooltip = 'Dev Proxy is stopping...';
+      statusBarItem.backgroundColor = undefined;
     } else {
       statusBarItem.text = '$(record) Dev Proxy';
       statusBarItem.command = 'traffic-recorder.startProxy';
