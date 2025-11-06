@@ -232,9 +232,9 @@
   "scripts": {
     "vscode:prepublish": "npm run build",
     "build": "npm run build:extension && npm run build:mcp",
-    "build:extension": "tsc -p ./",
+    "build:extension": "node esbuild.extension.cjs",
     "build:mcp": "node esbuild.mcp.cjs",
-    "watch": "tsc -watch -p ./",
+    "watch": "node esbuild.extension.cjs --watch",
     "pretest": "npm run build",
     "test": "node ./dist/test/runTest.js",
     "test:unit": "vitest",
