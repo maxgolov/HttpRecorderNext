@@ -47,7 +47,7 @@ jobs:
       - name: Install Xvfb and dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb libgtk-3-0 libxss1 libasound2 libsecret-1-0
+          sudo apt-get install -y xvfb libgtk-3-0 libxss1 libasound2t64 libsecret-1-0
       
       - name: Get Version
         id: get_version
