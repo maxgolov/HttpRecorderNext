@@ -256,7 +256,6 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
-    "@rollup/rollup-win32-x64-msvc": "^4.52.5",
     "@types/glob": "^9.0.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^24.10.0",
