@@ -68,6 +68,10 @@ jobs:
         working-directory: extensions/traffic-recorder
         run: npm install
       
+      - name: Restore HAR viewer dependencies
+        working-directory: extensions/traffic-recorder/har-viewer
+        run: npm install
+      
       # ═══════════════════════════════════════════════════════════
       # STEP 2: Build .NET Libraries (matches build.sh line 177-184)
       # HttpRecorder FIRST, then DevProxy (order matters!)
