@@ -62,6 +62,12 @@ const useStyles = makeStyles({
   tabs: {
     padding: '8px 16px',
     borderBottom: '1px solid var(--vscode-panel-border)',
+    backgroundColor: 'var(--vscode-editor-background)',
+  },
+  tab: {
+    color: 'var(--vscode-foreground)',
+    padding: '6px 12px',
+    marginRight: '4px',
   },
   content: {
     flex: 1,
@@ -726,11 +732,11 @@ export function HARDetails({ entry, onClose }: HARDetailsProps) {
           selectedValue={selectedTab}
           onTabSelect={(_, data) => setSelectedTab(data.value as TabValue)}
         >
-          {isPreviewable && <Tab value="preview">Preview</Tab>}
-          <Tab value="headers">Headers</Tab>
-          <Tab value="request">Request</Tab>
-          <Tab value="response">Response</Tab>
-          <Tab value="timings">Timings</Tab>
+          {isPreviewable && <Tab value="preview" className={styles.tab}>Preview</Tab>}
+          <Tab value="headers" className={styles.tab}>Headers</Tab>
+          <Tab value="request" className={styles.tab}>Request</Tab>
+          <Tab value="response" className={styles.tab}>Response</Tab>
+          <Tab value="timings" className={styles.tab}>Timings</Tab>
         </TabList>
       </div>
       <div className={styles.content}>

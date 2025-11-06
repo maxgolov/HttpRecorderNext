@@ -1,22 +1,21 @@
 import {
-    Input,
-    Table,
-    TableBody,
-    TableCell,
-    TableCellLayout,
-    TableColumnDefinition,
-    TableHeader,
-    TableHeaderCell,
-    TableRow,
-    createTableColumn,
-    makeStyles,
-    tokens,
-    useTableFeatures,
-    useTableSort
+  Input,
+  Table,
+  TableBody,
+  TableCell,
+  TableCellLayout,
+  TableColumnDefinition,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+  createTableColumn,
+  makeStyles,
+  useTableFeatures,
+  useTableSort
 } from '@fluentui/react-components';
 import {
-    Image20Regular,
-    Search20Regular
+  Image20Regular,
+  Search20Regular
 } from '@fluentui/react-icons';
 import { useMemo, useState } from 'react';
 import { HAREntryDisplay } from '../types';
@@ -27,18 +26,22 @@ const useStyles = makeStyles({
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-    borderRight: `1px solid ${tokens.colorNeutralStroke1}`,
+    borderRight: '1px solid var(--vscode-panel-border)',
+    backgroundColor: 'var(--vscode-editor-background)',
   },
   searchBar: {
     padding: '8px',
-    borderBottom: `1px solid ${tokens.colorNeutralStroke1}`,
+    borderBottom: '1px solid var(--vscode-panel-border)',
+    backgroundColor: 'var(--vscode-editor-background)',
   },
   tableContainer: {
     flex: 1,
     overflow: 'auto',
+    backgroundColor: 'var(--vscode-editor-background)',
   },
   table: {
     width: '100%',
+    backgroundColor: 'var(--vscode-editor-background)',
   },
   methodBadge: {
     display: 'inline-block',
@@ -50,49 +53,49 @@ const useStyles = makeStyles({
     minWidth: '50px',
   },
   methodGet: {
-    backgroundColor: tokens.colorPaletteGreenBackground2,
-    color: tokens.colorPaletteGreenForeground2,
+    backgroundColor: '#51cf66',
+    color: '#1e1e1e',
   },
   methodPost: {
-    backgroundColor: tokens.colorPaletteBlueForeground2,
-    color: tokens.colorNeutralForegroundInverted,
+    backgroundColor: '#339af0',
+    color: '#ffffff',
   },
   methodPut: {
-    backgroundColor: tokens.colorPaletteDarkOrangeForeground2,
-    color: tokens.colorNeutralForegroundInverted,
+    backgroundColor: '#ff922b',
+    color: '#ffffff',
   },
   methodDelete: {
-    backgroundColor: tokens.colorPaletteRedForeground2,
-    color: tokens.colorNeutralForegroundInverted,
+    backgroundColor: '#f48771',
+    color: '#ffffff',
   },
   methodOther: {
-    backgroundColor: tokens.colorNeutralBackground5,
-    color: tokens.colorNeutralForeground1,
+    backgroundColor: 'var(--vscode-button-secondaryBackground)',
+    color: 'var(--vscode-button-secondaryForeground)',
   },
   statusSuccess: {
-    color: tokens.colorPaletteGreenForeground2,
+    color: '#51cf66',
   },
   statusRedirect: {
-    color: tokens.colorPaletteBlueForeground2,
+    color: '#339af0',
   },
   statusError: {
-    color: tokens.colorPaletteRedForeground2,
+    color: '#f48771',
   },
   timestampCell: {
-    minWidth: '180px',
-    maxWidth: '180px',
+    minWidth: '300px',
+    maxWidth: '300px',
   },
   methodCell: {
-    minWidth: '80px',
-    maxWidth: '80px',
+    minWidth: '60px',
+    maxWidth: '60px',
   },
   pathCell: {
-    minWidth: '300px',
+    minWidth: '600px',
     flex: 1,
   },
   statusCell: {
-    minWidth: '60px',
-    maxWidth: '60px',
+    minWidth: '4em',
+    maxWidth: '4em',
   },
   typeCell: {
     minWidth: '100px',
@@ -103,8 +106,8 @@ const useStyles = makeStyles({
     maxWidth: '80px',
   },
   timeCell: {
-    minWidth: '80px',
-    maxWidth: '80px',
+    minWidth: '5em',
+    maxWidth: '10em',
   },
 });
 
@@ -290,9 +293,10 @@ export function HARTable({ entries, selectedEntry, onSelectEntry }: HARTableProp
           className={styles.table}
           sortable
           size="small"
+          style={{ backgroundColor: 'var(--vscode-editor-background)' }}
         >
           <TableHeader>
-            <TableRow>
+            <TableRow style={{ backgroundColor: 'var(--vscode-editor-background)' }}>
               {columns.map((column) => {
                 const cellStyle = 
                   column.columnId === 'timestamp' ? styles.timestampCell :
@@ -325,8 +329,11 @@ export function HARTable({ entries, selectedEntry, onSelectEntry }: HARTableProp
                 aria-selected={selectedEntry?.id === item.id}
                 style={{
                   backgroundColor: selectedEntry?.id === item.id 
-                    ? tokens.colorNeutralBackground1Selected 
-                    : undefined,
+                    ? 'var(--vscode-list-activeSelectionBackground)' 
+                    : 'var(--vscode-editor-background)',
+                  color: selectedEntry?.id === item.id
+                    ? 'var(--vscode-list-activeSelectionForeground)'
+                    : 'var(--vscode-editor-foreground)',
                   cursor: 'pointer',
                 }}
               >

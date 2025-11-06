@@ -3,7 +3,7 @@
   "displayName": "Traffic Cop: HTTP Traffic Recorder for Test Automation",
   "description": "Comprehensive HTTP traffic recorder supporting 20+ test frameworks (Playwright, Jest, Pytest, JUnit, etc.) with automatic detection, Dev Proxy integration, and HAR file generation for debugging, mocking, and performance analysis",
   "version": "0.7.1",
-  "publisher": "maxgolov",
+  "publisher": "MaxGolovanov",
   "icon": "icon.png",
   "repository": {
     "type": "git",
