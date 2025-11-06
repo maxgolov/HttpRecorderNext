@@ -21,9 +21,9 @@ export default defineConfig({
     // Base URL for testing
     baseURL: process.env.BASE_URL || 'https://www.google.com',
     
-    // Proxy configuration - Dev Proxy listens on localhost:8000
+    // Proxy configuration - Dev Proxy listens on localhost:8080
     proxy: {
-      server: process.env.PROXY_URL || 'http://localhost:8000',
+      server: process.env.PROXY_URL || 'http://localhost:8080',
       bypass: 'localhost,127.0.0.1' // Don't proxy local requests
     },
     

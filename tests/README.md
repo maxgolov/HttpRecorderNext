@@ -61,7 +61,7 @@ Key features shown:
 // Proxy configuration
 test.use({
   proxy: {
-    server: 'http://localhost:8000',
+    server: 'http://localhost:8080',
     bypass: '<-loopback>' // Critical for localhost
   },
   ignoreHTTPSErrors: true,
@@ -83,7 +83,7 @@ await page.waitForTimeout(20000);
 ```typescript
 test.use({
   proxy: {
-    server: 'http://localhost:8000',  // Dev Proxy address
+    server: 'http://localhost:8080',  // Dev Proxy address
     bypass: '<-loopback>'              // REQUIRED for localhost interception
   },
   ignoreHTTPSErrors: true              // Dev Proxy uses self-signed certs
@@ -100,12 +100,12 @@ You can also configure proxy via environment variables:
 
 ```bash
 # Windows PowerShell
-$env:HTTP_PROXY="http://localhost:8000"
-$env:HTTPS_PROXY="http://localhost:8000"
+$env:HTTP_PROXY="http://localhost:8080"
+$env:HTTPS_PROXY="http://localhost:8080"
 npx playwright test examples/
 
 # Linux/Mac
-HTTP_PROXY=http://localhost:8000 HTTPS_PROXY=http://localhost:8000 npx playwright test examples/
+HTTP_PROXY=http://localhost:8080 HTTPS_PROXY=http://localhost:8080 npx playwright test examples/
 ```
 
 ## Troubleshooting
@@ -113,7 +113,7 @@ HTTP_PROXY=http://localhost:8000 HTTPS_PROXY=http://localhost:8000 npx playwrigh
 ### No traffic recorded?
 
 1. ✅ Check Dev Proxy is running (status bar should show "Running")
-2. ✅ Verify proxy port matches (default: 8000)
+2. ✅ Verify proxy port matches (default: 8080)
 3. ✅ Ensure `bypass: '<-loopback>'` is set
 4. ✅ Check `.http-recorder/` directory exists
 
@@ -164,12 +164,12 @@ Edit `devproxyrc.json`:
 ```typescript
 test('Multiple contexts', async ({ browser }) => {
   const context1 = await browser.newContext({
-    proxy: { server: 'http://localhost:8000', bypass: '<-loopback>' },
+    proxy: { server: 'http://localhost:8080', bypass: '<-loopback>' },
     ignoreHTTPSErrors: true
   });
   
   const context2 = await browser.newContext({
-    proxy: { server: 'http://localhost:8000', bypass: '<-loopback>' },
+    proxy: { server: 'http://localhost:8080', bypass: '<-loopback>' },
     ignoreHTTPSErrors: true
   });
   
