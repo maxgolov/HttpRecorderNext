@@ -43,8 +43,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: extensions/traffic-recorder/package-lock.json
       
       - name: Install Xvfb and dependencies
         run: |
@@ -72,15 +70,7 @@ jobs:
         run: dotnet build DevProxyExtension/HttpRecorder.DevProxy/HttpRecorder.DevProxy.csproj --configuration ${{ env.CONFIGURATION }} --no-restore
       
       - name: Run .NET tests
-        run: dotnet test HttpRecorder.Tests/HttpRecorder.Tests.csproj --configuration ${{ env.CONFIGURATION }} --no-build --framework net9.0 --logger "trx;LogFileName=test-results.trx"
-      
-      - name: Publish .NET test results
-        uses: dorny/test-reporter@v1
-        if: always()
-        with:
-          name: .NET Tests
-          path: '**/test-results.trx'
-          reporter: dotnet-trx
+        run: dotnet test HttpRecorder.Tests/HttpRecorder.Tests.csproj --configuration ${{ env.CONFIGURATION }} --no-build --framework net9.0 --logger "console;verbosity=minimal"
       
       # ═══════════════════════════════════════════════════════════
       # STEP 2: Create NuGet Package
