@@ -346,13 +346,12 @@ public sealed class HttpRecorderPlugin(
             var filePath = await PrepareOutputFilePathAsync(sessionName);
             var fullPath = Path.HasExtension(filePath) ? filePath : $"{filePath}.har";
 
-            // Use larger buffer and atomic write approach
-            // Write to temp file first, then atomic rename on close
+            // Use larger buffer with read sharing enabled for live preview
             var fileStream = new FileStream(
                 fullPath,
                 FileMode.Create,
                 FileAccess.Write,
-                FileShare.None,  // Exclusive access
+                FileShare.Read,  // Allow readers (e.g., preview) while writing
                 bufferSize: 65536,  // 64KB buffer instead of default 4KB
                 useAsync: true);
             
@@ -384,17 +383,6 @@ public sealed class HttpRecorderPlugin(
 
         try
         {
-            lock (_lock)
-            {
-                // Add comma before entry if not first
-                if (!_firstEntry)
-                {
-                    // Use WriteAsync instead of WriteLine to avoid overflow with large files
-                    _harFileWriter.WriteAsync(",\n").GetAwaiter().GetResult();
-                }
-                _firstEntry = false;
-            }
-
             // Create HAR entry from InteractionMessage
             Entry entry;
             try
@@ -434,10 +422,22 @@ public sealed class HttpRecorderPlugin(
             var indentedLines = formattedJson.Split('\n').Select(line => "      " + line);
             var indentedJson = string.Join('\n', indentedLines);
 
-            await _harFileWriter.WriteAsync(indentedJson);
-            
-            // Flush after each entry to minimize data loss on crash
-            await _harFileWriter.FlushAsync();
+            // ATOMIC WRITE: Lock and flush together to prevent race conditions
+            lock (_lock)
+            {
+                // Add comma before entry if not first
+                if (!_firstEntry)
+                {
+                    _harFileWriter.Write(",\n");  // Synchronous write under lock
+                }
+                _firstEntry = false;
+
+                // Write the entry synchronously
+                _harFileWriter.Write(indentedJson);
+                
+                // CRITICAL: Flush atomically under lock to ensure data integrity
+                _harFileWriter.Flush();
+            }
         }
         catch (Exception ex)
         {

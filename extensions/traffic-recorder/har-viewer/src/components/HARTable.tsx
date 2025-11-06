@@ -1,22 +1,22 @@
 import {
-  Input,
-  Table,
-  TableBody,
-  TableCell,
-  TableCellLayout,
-  TableColumnDefinition,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-  createTableColumn,
-  makeStyles,
-  tokens,
-  useTableFeatures,
-  useTableSort
+    Input,
+    Table,
+    TableBody,
+    TableCell,
+    TableCellLayout,
+    TableColumnDefinition,
+    TableHeader,
+    TableHeaderCell,
+    TableRow,
+    createTableColumn,
+    makeStyles,
+    tokens,
+    useTableFeatures,
+    useTableSort
 } from '@fluentui/react-components';
 import {
-  Image20Regular,
-  Search20Regular
+    Image20Regular,
+    Search20Regular
 } from '@fluentui/react-icons';
 import { useMemo, useState } from 'react';
 import { HAREntryDisplay } from '../types';
@@ -152,10 +152,10 @@ export function HARTable({ entries, selectedEntry, onSelectEntry }: HARTableProp
     
     const query = searchQuery.toLowerCase();
     return entries.filter(entry => 
-      entry.path.toLowerCase().includes(query) ||
-      entry.method.toLowerCase().includes(query) ||
-      entry.status.toString().includes(query) ||
-      entry.type.toLowerCase().includes(query)
+      (entry.path || '').toLowerCase().includes(query) ||
+      (entry.method || '').toLowerCase().includes(query) ||
+      (entry.status || 0).toString().includes(query) ||
+      (entry.type || '').toLowerCase().includes(query)
     );
   }, [entries, searchQuery]);
 
@@ -197,7 +197,7 @@ export function HARTable({ entries, selectedEntry, onSelectEntry }: HARTableProp
       compare: (a, b) => a.path.localeCompare(b.path),
       renderHeaderCell: () => 'Path',
       renderCell: (entry) => {
-        const isImage = entry.response.content.mimeType.startsWith('image/');
+        const isImage = entry.response.content.mimeType?.startsWith('image/') ?? false;
         return (
           <TableCellLayout 
             truncate 

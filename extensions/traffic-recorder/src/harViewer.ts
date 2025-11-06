@@ -300,7 +300,16 @@ export class HARViewerProvider {
 
     private async setupWebviewPanel(panel: vscode.WebviewPanel, uri: vscode.Uri) {
         const panelKey = uri.fsPath;
+        console.log('[HAR Viewer] setupWebviewPanel called for:', panelKey);
         HARViewerProvider._panels.set(panelKey, panel);
+
+        // Check if panel is already disposed
+        let isDisposed = false;
+        panel.onDidDispose(() => {
+            console.log('[HAR Viewer] Panel disposed:', panelKey);
+            isDisposed = true;
+            HARViewerProvider._panels.delete(panelKey);
+        });
 
         // Configure webview
         panel.webview.options = {
@@ -309,78 +318,160 @@ export class HARViewerProvider {
                 vscode.Uri.joinPath(this._extensionUri, 'dist', 'har-viewer'),
             ]
         };
+        console.log('[HAR Viewer] Webview configured');
 
         // Load HAR file content
         let harContent: string;
         
         try {
+            console.log('[HAR Viewer] Reading file:', uri.fsPath);
             const fileContent = await vscode.workspace.fs.readFile(uri);
+            
+            // Check if disposed after async operation
+            if (isDisposed) {
+                console.log('[HAR Viewer] Panel disposed after file read, aborting');
+                return;
+            }
+            
             harContent = Buffer.from(fileContent).toString('utf8');
+            console.log('[HAR Viewer] File read, size:', harContent.length, 'bytes');
             
             // Remove BOM if present
             if (harContent.charCodeAt(0) === 0xFEFF) {
                 harContent = harContent.substring(1);
+                console.log('[HAR Viewer] BOM removed');
             }
             
             // Try to fix truncated HAR files
             const fixResult = fixTruncatedHAR(harContent);
             if (fixResult.fixed) {
+                console.log('[HAR Viewer] HAR file was truncated, fixed');
                 harContent = fixResult.content;
                 const fixMessage = fixResult.error || 'File was auto-fixed';
                 
                 // Automatically save the fixed version without asking
                 try {
                     await vscode.workspace.fs.writeFile(uri, Buffer.from(harContent, 'utf8'));
+                    
+                    // Check if disposed after async operation
+                    if (isDisposed) {
+                        console.log('[HAR Viewer] Panel disposed after file write, aborting');
+                        return;
+                    }
+                    
                     // Show non-intrusive notification that fix was applied
                     vscode.window.showInformationMessage(`HAR file auto-fixed: ${fixMessage}`, { modal: false });
                 } catch (saveError: any) {
-                    vscode.window.showWarningMessage(`Auto-fix applied but couldn't save: ${saveError.message}. Using temporary fix.`);
+                    if (!isDisposed) {
+                        vscode.window.showWarningMessage(`Auto-fix applied but couldn't save: ${saveError.message}. Using temporary fix.`);
+                    }
                 }
             } else if (fixResult.error) {
+                console.log('[HAR Viewer] HAR file has errors:', fixResult.error);
                 // Show error but don't throw - try to display what we can
-                vscode.window.showWarningMessage(`HAR file has errors: ${fixResult.error}. Attempting to display anyway.`);
+                if (!isDisposed) {
+                    vscode.window.showWarningMessage(`HAR file has errors: ${fixResult.error}. Attempting to display anyway.`);
+                }
+            } else {
+                console.log('[HAR Viewer] HAR file is valid, no fix needed');
             }
             
             // Try to validate - if it fails, still attempt to show in viewer
             try {
-                JSON.parse(harContent);
+                const parsed = JSON.parse(harContent);
+                const entryCount = parsed?.log?.entries?.length || 0;
+                console.log('[HAR Viewer] JSON valid, entries:', entryCount);
             } catch (parseError: any) {
-                vscode.window.showWarningMessage(`HAR file is not valid JSON: ${parseError.message}. Viewer may not work correctly.`);
+                console.log('[HAR Viewer] JSON parse error:', parseError.message);
+                if (!isDisposed) {
+                    vscode.window.showWarningMessage(`HAR file is not valid JSON: ${parseError.message}. Viewer may not work correctly.`);
+                }
             }
         } catch (error) {
-            vscode.window.showErrorMessage(`Failed to load HAR file: ${error}`);
-            panel.webview.html = `<html><body><h1>Error loading HAR file</h1><p>${error}</p></body></html>`;
+            console.log('[HAR Viewer] Error loading file:', error);
+            if (!isDisposed) {
+                vscode.window.showErrorMessage(`Failed to load HAR file: ${error}`);
+                panel.webview.html = `<html><body><h1>Error loading HAR file</h1><p>${error}</p></body></html>`;
+            }
             return;
         }
 
+        // Check if disposed before setting HTML
+        if (isDisposed) {
+            console.log('[HAR Viewer] Panel disposed before setting HTML, aborting');
+            return;
+        }
+
+        console.log('[HAR Viewer] Setting webview HTML');
         // Set HTML content
         panel.webview.html = this._getHtmlForWebview(panel.webview);
+        console.log('[HAR Viewer] Webview HTML set');
 
         // Handle messages from the webview
         panel.webview.onDidReceiveMessage(
             message => {
+                if (isDisposed) return;
+                
+                console.log('[HAR Viewer] Message from webview:', message.type);
                 switch (message.type) {
                     case 'ready':
-                        panel.webview.postMessage({
-                            type: 'harData',
-                            data: harContent
-                        });
+                        console.log('[HAR Viewer] Webview ready, sanitizing and sending HAR data, size:', harContent.length);
+                        // Sanitize null values before sending
+                        try {
+                            const harData = JSON.parse(harContent);
+                            if (harData.log && harData.log.entries) {
+                                for (const entry of harData.log.entries) {
+                                    if (entry.request && entry.request.headers) {
+                                        for (const header of entry.request.headers) {
+                                            if (header.value === null || header.value === undefined) {
+                                                header.value = '';
+                                            }
+                                        }
+                                    }
+                                    if (entry.response && entry.response.headers) {
+                                        for (const header of entry.response.headers) {
+                                            if (header.value === null || header.value === undefined) {
+                                                header.value = '';
+                                            }
+                                        }
+                                    }
+                                    if (entry.response && entry.response.statusText === null) {
+                                        entry.response.statusText = '';
+                                    }
+                                }
+                            }
+                            const sanitizedContent = JSON.stringify(harData);
+                            console.log('[HAR Viewer] Data sanitized, sending to webview');
+                            panel.webview.postMessage({
+                                type: 'harData',
+                                data: sanitizedContent
+                            });
+                        } catch (e) {
+                            console.log('[HAR Viewer] Sanitization failed, sending original:', e);
+                            panel.webview.postMessage({
+                                type: 'harData',
+                                data: harContent
+                            });
+                        }
+                        console.log('[HAR Viewer] HAR data sent to webview');
                         break;
                     case 'error':
+                        console.log('[HAR Viewer] Error from webview:', message.message);
                         vscode.window.showErrorMessage(message.message);
                         break;
+                    default:
+                        console.log('[HAR Viewer] Unknown message type:', message.type, message);
                 }
             }
         );
-
-        // Clean up when panel is closed
-        panel.onDidDispose(() => {
-            HARViewerProvider._panels.delete(panelKey);
-        });
+        console.log('[HAR Viewer] Message handler registered');
 
         // Update panel when file changes
         const fileWatcher = vscode.workspace.createFileSystemWatcher(uri.fsPath);
         fileWatcher.onDidChange(async () => {
+            if (isDisposed) return;
+            
+            console.log('[HAR Viewer] File changed, reloading');
             try {
                 const fileContent = await vscode.workspace.fs.readFile(uri);
                 let newContent = Buffer.from(fileContent).toString('utf8');
@@ -389,23 +480,56 @@ export class HARViewerProvider {
                     newContent = newContent.substring(1);
                 }
                 
-                JSON.parse(newContent);
+                // Sanitize before sending
+                const harData = JSON.parse(newContent);
+                if (harData.log && harData.log.entries) {
+                    for (const entry of harData.log.entries) {
+                        if (entry.request && entry.request.headers) {
+                            for (const header of entry.request.headers) {
+                                if (header.value === null || header.value === undefined) {
+                                    header.value = '';
+                                }
+                            }
+                        }
+                        if (entry.response && entry.response.headers) {
+                            for (const header of entry.response.headers) {
+                                if (header.value === null || header.value === undefined) {
+                                    header.value = '';
+                                }
+                            }
+                        }
+                        if (entry.response && entry.response.statusText === null) {
+                            entry.response.statusText = '';
+                        }
+                    }
+                }
+                newContent = JSON.stringify(harData);
+                console.log('[HAR Viewer] File reloaded and sanitized, size:', newContent.length);
                 
-                panel.webview.postMessage({
-                    type: 'harData',
-                    data: newContent
-                });
+                if (!isDisposed) {
+                    panel.webview.postMessage({
+                        type: 'harData',
+                        data: newContent
+                    });
+                    console.log('[HAR Viewer] Updated data sent to webview');
+                }
             } catch (error) {
-                console.error('Failed to reload HAR file:', error);
+                console.error('[HAR Viewer] Failed to reload HAR file:', error);
             }
         });
+        console.log('[HAR Viewer] File watcher created');
 
+        // Cleanup happens in the onDidDispose handler registered at the top
         panel.onDidDispose(() => {
+            console.log('[HAR Viewer] Cleaning up file watcher');
             fileWatcher.dispose();
         });
+        
+        console.log('[HAR Viewer] setupWebviewPanel completed successfully');
     }
 
     public async openHARFile(uri: vscode.Uri) {
+        console.log('[HAR Viewer] openHARFile called for:', uri.fsPath);
         const column = vscode.window.activeTextEditor
             ? vscode.window.activeTextEditor.viewColumn
             : undefined;
@@ -416,6 +540,7 @@ export class HARViewerProvider {
         // If we already have a panel for this file, check if it's still valid
         let panel = HARViewerProvider._panels.get(panelKey);
         if (panel) {
+            console.log('[HAR Viewer] Panel already exists, reusing');
             try {
                 panel.reveal(column);
                 // If panel is still valid, reload the content
@@ -427,18 +552,49 @@ export class HARViewerProvider {
                     harContent = harContent.substring(1);
                 }
                 
-                JSON.parse(harContent); // Validate
+                // Sanitize null values before sending
+                const harData = JSON.parse(harContent);
+                if (harData.log && harData.log.entries) {
+                    for (const entry of harData.log.entries) {
+                        // Sanitize request headers
+                        if (entry.request && entry.request.headers) {
+                            for (const header of entry.request.headers) {
+                                if (header.value === null || header.value === undefined) {
+                                    header.value = '';
+                                }
+                            }
+                        }
+                        
+                        // Sanitize response headers
+                        if (entry.response && entry.response.headers) {
+                            for (const header of entry.response.headers) {
+                                if (header.value === null || header.value === undefined) {
+                                    header.value = '';
+                                }
+                            }
+                        }
+                        
+                        // Sanitize other potential null values
+                        if (entry.response && entry.response.statusText === null) {
+                            entry.response.statusText = '';
+                        }
+                    }
+                }
+                harContent = JSON.stringify(harData);
+                console.log('[HAR Viewer] Existing panel reloaded with sanitized data, size:', harContent.length);
                 panel.webview.postMessage({
                     type: 'harData',
                     data: harContent
                 });
                 return;
             } catch (error) {
+                console.log('[HAR Viewer] Error reusing panel:', error);
                 // Panel was disposed or file read failed, remove it and create new one
                 HARViewerProvider._panels.delete(panelKey);
             }
         }
 
+        console.log('[HAR Viewer] Creating new panel');
         // Create a new panel
         panel = vscode.window.createWebviewPanel(
             HARViewerProvider.viewType,
@@ -452,14 +608,29 @@ export class HARViewerProvider {
                 ]
             }
         );
+        console.log('[HAR Viewer] Panel created');
 
         HARViewerProvider._panels.set(panelKey, panel);
+        
+        // Track disposal state
+        let isDisposed = false;
+        panel.onDidDispose(() => {
+            console.log('[HAR Viewer] Panel disposed (openHARFile):', panelKey);
+            isDisposed = true;
+            HARViewerProvider._panels.delete(panelKey);
+        });
 
         // Load HAR file content
         let harContent: string;
         
         try {
             const fileContent = await vscode.workspace.fs.readFile(uri);
+            
+            // Check if disposed after async operation
+            if (isDisposed) {
+                return;
+            }
+            
             harContent = Buffer.from(fileContent).toString('utf8');
             
             // Remove BOM if present
@@ -476,25 +647,76 @@ export class HARViewerProvider {
                 // Automatically save the fixed version without asking
                 try {
                     await vscode.workspace.fs.writeFile(uri, Buffer.from(harContent, 'utf8'));
+                    
+                    // Check if disposed after async operation
+                    if (isDisposed) {
+                        return;
+                    }
+                    
                     // Show non-intrusive notification that fix was applied
                     vscode.window.showInformationMessage(`HAR file auto-fixed: ${fixMessage}`, { modal: false });
                 } catch (saveError: any) {
-                    vscode.window.showWarningMessage(`Auto-fix applied but couldn't save: ${saveError.message}. Using temporary fix.`);
+                    if (!isDisposed) {
+                        vscode.window.showWarningMessage(`Auto-fix applied but couldn't save: ${saveError.message}. Using temporary fix.`);
+                    }
                 }
             } else if (fixResult.error) {
                 // Show error but don't throw - try to display what we can
-                vscode.window.showWarningMessage(`HAR file has errors: ${fixResult.error}. Attempting to display anyway.`);
+                if (!isDisposed) {
+                    vscode.window.showWarningMessage(`HAR file has errors: ${fixResult.error}. Attempting to display anyway.`);
+                }
             }
             
-            // Try to validate - if it fails, still attempt to show in viewer
+            // Try to validate and sanitize - if it fails, still attempt to show in viewer
             try {
-                JSON.parse(harContent);
+                const harData = JSON.parse(harContent);
+                
+                // Sanitize null values that could cause rendering errors
+                if (harData.log && harData.log.entries) {
+                    for (const entry of harData.log.entries) {
+                        // Sanitize request headers
+                        if (entry.request && entry.request.headers) {
+                            for (const header of entry.request.headers) {
+                                if (header.value === null || header.value === undefined) {
+                                    header.value = '';
+                                }
+                            }
+                        }
+                        
+                        // Sanitize response headers
+                        if (entry.response && entry.response.headers) {
+                            for (const header of entry.response.headers) {
+                                if (header.value === null || header.value === undefined) {
+                                    header.value = '';
+                                }
+                            }
+                        }
+                        
+                        // Sanitize other potential null values
+                        if (entry.response && entry.response.statusText === null) {
+                            entry.response.statusText = '';
+                        }
+                    }
+                }
+                
+                // Convert back to string with sanitized data
+                harContent = JSON.stringify(harData);
+                console.log('[HAR Viewer] Data sanitized, null values converted to empty strings');
             } catch (parseError: any) {
-                vscode.window.showWarningMessage(`HAR file is not valid JSON: ${parseError.message}. Viewer may not work correctly.`);
+                if (!isDisposed) {
+                    vscode.window.showWarningMessage(`HAR file is not valid JSON: ${parseError.message}. Viewer may not work correctly.`);
+                }
             }
         } catch (error) {
-            vscode.window.showErrorMessage(`Failed to load HAR file: ${error}`);
-            panel.dispose();
+            if (!isDisposed) {
+                vscode.window.showErrorMessage(`Failed to load HAR file: ${error}`);
+                panel.dispose();
+            }
+            return;
+        }
+
+        // Check if disposed before setting HTML
+        if (isDisposed) {
             return;
         }
 
@@ -504,6 +726,8 @@ export class HARViewerProvider {
         // Handle messages from the webview
         panel.webview.onDidReceiveMessage(
             message => {
+                if (isDisposed) return;
+                
                 switch (message.type) {
                     case 'ready':
                         // Send HAR data when webview is ready
@@ -519,14 +743,11 @@ export class HARViewerProvider {
             }
         );
 
-        // Clean up when panel is closed
-        panel.onDidDispose(() => {
-            HARViewerProvider._panels.delete(panelKey);
-        }, null);
-
         // Update panel when file changes
         const fileWatcher = vscode.workspace.createFileSystemWatcher(uri.fsPath);
         fileWatcher.onDidChange(async () => {
+            if (isDisposed) return;
+            
             try {
                 const fileContent = await vscode.workspace.fs.readFile(uri);
                 let newContent = Buffer.from(fileContent).toString('utf8');
@@ -538,10 +759,12 @@ export class HARViewerProvider {
                 
                 JSON.parse(newContent); // Validate
                 
-                panel!.webview.postMessage({
-                    type: 'harData',
-                    data: newContent
-                });
+                if (!isDisposed) {
+                    panel!.webview.postMessage({
+                        type: 'harData',
+                        data: newContent
+                    });
+                }
             } catch (error) {
                 console.error('Failed to reload HAR file:', error);
             }
@@ -553,6 +776,7 @@ export class HARViewerProvider {
     }
 
     private _getHtmlForWebview(webview: vscode.Webview): string {
+        console.log('[HAR Viewer] Generating HTML for webview');
         // Get paths to bundled viewer files
         const harViewerPath = vscode.Uri.joinPath(this._extensionUri, 'dist', 'har-viewer');
         
@@ -560,15 +784,18 @@ export class HARViewerProvider {
         const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(harViewerPath, 'assets', 'main.js'));
         const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(harViewerPath, 'assets', 'main.css'));
 
+        console.log('[HAR Viewer] Script URI:', scriptUri.toString());
+        console.log('[HAR Viewer] Style URI:', styleUri.toString());
+
         // Use a nonce to allow specific scripts to run
         const nonce = getNonce();
 
-        return `<!DOCTYPE html>
+        const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; font-src ${webview.cspSource};">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; font-src ${webview.cspSource}; img-src ${webview.cspSource} data: blob:;">
     <link href="${styleUri}" rel="stylesheet">
     <title>HAR Viewer</title>
     <style>
@@ -596,6 +823,9 @@ export class HARViewerProvider {
     <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
+        
+        console.log('[HAR Viewer] HTML generated, length:', html.length);
+        return html;
     }
 }
 

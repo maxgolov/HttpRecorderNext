@@ -1,11 +1,11 @@
 import {
-    makeStyles,
-    MessageBar,
-    MessageBarBody,
-    MessageBarTitle,
-    Spinner,
-    Text,
-    tokens,
+  makeStyles,
+  MessageBar,
+  MessageBarBody,
+  MessageBarTitle,
+  Spinner,
+  Text,
+  tokens,
 } from '@fluentui/react-components';
 import { ErrorCircle20Regular } from '@fluentui/react-icons';
 import { useEffect, useState } from 'react';
@@ -74,18 +74,19 @@ function App() {
             // Transform entries for display
             const displayEntries: HAREntryDisplay[] = harFile.log.entries.map((entry, index) => {
               const url = new URL(entry.request.url);
-              const contentType = entry.response.content.mimeType || 'unknown';
+              const contentType = entry.response.content.mimeType || '';
+              const type = contentType ? (contentType.split(';')[0].split('/').pop() || 'unknown') : 'unknown';
               
               return {
                 ...entry,
                 id: `entry-${index}`,
                 path: url.pathname + url.search,
-                method: entry.request.method,
-                status: entry.response.status,
-                statusText: entry.response.statusText,
-                size: entry.response.content.size,
-                time: entry.time,
-                type: contentType.split(';')[0].split('/').pop() || 'unknown',
+                method: entry.request.method || 'GET',
+                status: entry.response.status || 0,
+                statusText: entry.response.statusText || '',
+                size: entry.response.content.size || 0,
+                time: entry.time || 0,
+                type,
               };
             });
             

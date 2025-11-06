@@ -68,7 +68,7 @@ export interface HARRequest {
 
 export interface HARResponse {
   status: number;
-  statusText: string;
+  statusText: string | null;
   httpVersion: string;
   cookies: HARCookie[];
   headers: HARHeader[];
@@ -92,7 +92,7 @@ export interface HARCookie {
 
 export interface HARHeader {
   name: string;
-  value: string;
+  value: string | null;
   comment?: string;
 }
 
@@ -120,7 +120,7 @@ export interface HARParam {
 export interface HARContent {
   size: number;
   compression?: number;
-  mimeType: string;
+  mimeType: string | null;
   text?: string;
   encoding?: string;
   comment?: string;
