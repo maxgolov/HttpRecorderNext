@@ -1,36 +1,108 @@
-# Traffic Recorder Extension for VS Code
+# Traffic Cop: HTTP Traffic Recorder for Test Automation
 
-> Record HTTP traffic to HAR files using Dev Proxy, Playwright, and HttpRecorder
+> Comprehensive HTTP traffic recorder with automatic detection of 20+ test frameworks across 9 programming languages
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.6-blue.svg)](https://www.typescriptlang.org/)
-[![Playwright](https://img.shields.io/badge/Playwright-1.48-green.svg)](https://playwright.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
+[![Playwright](https://img.shields.io/badge/Playwright-1.56-green.svg)](https://playwright.dev/)
 [![Dev Proxy](https://img.shields.io/badge/Dev%20Proxy-0.22-orange.svg)](https://learn.microsoft.com/microsoft-cloud/dev/dev-proxy/)
+[![Test Frameworks](https://img.shields.io/badge/Frameworks-20%2B-purple.svg)](#supported-frameworks)
 
 ## 🎯 Overview
 
-The Traffic Recorder extension enables automated HTTP traffic recording directly within VS Code. It integrates:
+Traffic Cop is a powerful VS Code extension that automatically detects your test framework and records ALL HTTP traffic—from browser interactions to backend API calls—into standard HAR (HTTP Archive) files. Unlike Playwright's built-in HAR capture which only sees browser-side traffic, Traffic Cop captures the complete picture: frontend, backend, and external API calls in a unified recording.
 
-- **Dev Proxy** - Microsoft's HTTP proxy for development
-- **HttpRecorder Plugin** - Custom plugin to record traffic to HAR (HTTP Archive) files
-- **Playwright** - Modern browser automation framework
-- **TypeScript + Vitest** - Type-safe testing with fast test runner
+### Key Capabilities
 
-**Key Feature**: Does NOT require system-wide proxy configuration. Playwright browsers route traffic through Dev Proxy while your system remains unaffected.
+- **🔍 Auto-Detection**: Automatically discovers 20+ test frameworks in your workspace
+- **🌐 Full-Stack Capture**: Records browser + backend + external API traffic
+- **🎭 Multi-Framework**: JavaScript/TypeScript, Python, Java, C#, Go, Ruby, PHP, Swift, Kotlin
+- **📊 HAR Output**: Standard HTTP Archive format compatible with all analysis tools
+- **🔒 Privacy-First**: Automatically anonymizes sensitive headers (auth tokens, cookies, API keys)
+- **⚡ Zero Config**: Start recording with one click—no manual proxy setup required
 
-## 🚀 Features
+## 🚀 What Makes Traffic Cop Unique?
 
-- ✅ **One-Click Recording**: Start Dev Proxy and run tests from VS Code
-- ✅ **HAR File Output**: Standard HTTP Archive format compatible with all tools
-- ✅ **Sensitive Data Anonymization**: Automatically redacts auth tokens, cookies, API keys
-- ✅ **Cross-Platform**: Works on Windows, Linux, and macOS
-- ✅ **TypeScript Tests**: Write type-safe Playwright tests
-- ✅ **No System Proxy**: Only Playwright uses the proxy, not your entire system
-- ✅ **Real-Time Logging**: See Dev Proxy activity in VS Code Output panel
+### Complete Traffic Visibility
+
+```
+User (Browser) → ✅ Captured by Traffic Cop
+    ↓
+Frontend App → ✅ Captured by Traffic Cop  
+    ↓
+Backend Server → ✅ Captured by Traffic Cop (Python, Node, .NET, Java, etc.)
+    ↓
+External APIs → ✅ Captured by Traffic Cop (OpenAI, Azure, AWS, etc.)
+    ↓
+Microservices → ✅ Captured by Traffic Cop
+```
+
+**Playwright's HAR** only sees: Browser → Frontend  
+**Traffic Cop** sees: Browser → Frontend → Backend → External APIs (complete flow!)
+
+### Use Cases
+
+- **🐛 E2E Debugging**: See the entire request chain from UI click to backend API call
+- **💰 Cost Analysis**: Track API usage and costs during testing (OpenAI, Azure, etc.)
+- **🔍 Performance**: Identify slow backend calls, retries, and bottlenecks
+- **📝 Documentation**: Auto-generate API documentation from actual test runs
+- **🎯 Mocking**: Create realistic mock data from production-like test scenarios
+
+## 📦 Supported Frameworks
+
+Traffic Cop automatically detects and supports 20+ test frameworks across 9 languages:
+
+### JavaScript/TypeScript (7 frameworks)
+| Framework | Icon | Detection Method | Proxy Support |
+|-----------|------|-----------------|---------------|
+| **Playwright** | 🎭 | `playwright.config.{ts,js,mjs}` | ✅ Full (browser + network) |
+| **Jest** | 🃏 | `jest.config.{js,ts}` + `package.json` | ✅ Full (via `HTTP_PROXY`) |
+| **Vitest** | ⚡ | `vitest.config.{ts,js}` or `vite.config.{ts,js}` | ✅ Full (via `nodeEnv`) |
+| **Cypress** | 🌲 | `cypress.config.{ts,js}` | ✅ Full (built-in proxy) |
+| **Mocha** | ☕ | `package.json` with mocha dependency | ✅ Full (via `HTTP_PROXY`) |
+| **Jasmine** | 🌸 | `jasmine.json` | ✅ Full (via `HTTP_PROXY`) |
+| **TestCafe** | 🧪 | `.testcaferc.{json,js}` | ✅ Full (built-in proxy) |
+
+### Python (3 frameworks)
+| Framework | Icon | Detection Method | Proxy Support |
+|-----------|------|-----------------|---------------|
+| **pytest** | 🐍 | `pytest.ini`, `pyproject.toml`, `setup.cfg` | ✅ Full (`requests` lib respects proxy) |
+| **unittest** | 🐍 | Python files with `import unittest` | ✅ Full (via `HTTP_PROXY`) |
+| **Robot Framework** | 🤖 | `*.robot` files | ✅ Full (via `HTTP_PROXY`) |
+
+### Java (3 frameworks)
+| Framework | Icon | Detection Method | Proxy Support |
+|-----------|------|-----------------|---------------|
+| **JUnit** | ☕ | `pom.xml` or `build.gradle` with JUnit | ✅ Full (via JVM proxy settings) |
+| **TestNG** | 🧪 | `testng.xml` | ✅ Full (via JVM proxy settings) |
+| **Kotest** | 🔧 | `build.gradle.kts` with Kotest | ✅ Full (Kotlin respects proxy) |
+
+### C#/.NET (2 frameworks)
+| Framework | Icon | Detection Method | Proxy Support |
+|-----------|------|-----------------|---------------|
+| **NUnit** | 🔷 | `*.csproj` with NUnit packages | ✅ Full (via system proxy) |
+| **xUnit** | ❎ | `*.csproj` with xUnit packages | ✅ Full (via system proxy) |
+
+### Other Languages (5 frameworks)
+| Framework | Icon | Language | Detection Method | Proxy Support |
+|-----------|------|----------|-----------------|---------------|
+| **Go test** | 🔵 | Go | `go.mod` + `*_test.go` | ✅ Full (via `HTTP_PROXY`) |
+| **RSpec** | 💎 | Ruby | `.rspec` or `spec_helper.rb` | ✅ Full (via `HTTP_PROXY`) |
+| **PHPUnit** | 🐘 | PHP | `phpunit.xml` | ✅ Full (via `HTTP_PROXY`) |
+| **XCTest** | 🍎 | Swift | `*.xcodeproj` or `Package.swift` | ✅ Full (URLSession respects proxy) |
+
+### How Auto-Detection Works
+
+1. **Workspace Scan**: Extension scans for configuration files (e.g., `playwright.config.ts`, `pytest.ini`, `pom.xml`)
+2. **Dependency Check**: Verifies framework is actually installed (checks `package.json`, `pyproject.toml`, etc.)
+3. **Smart Display**: Only shows "Record [Framework] Tests" buttons for detected frameworks
+4. **Auto-Refresh**: Re-scans when you add/modify config files (file watcher)
+
+**Configuration**: Disable auto-detection via `trafficRecorder.autoDetectFrameworks` setting (enabled by default).
 
 ## 📋 Prerequisites
 
 ### Required
-- **VS Code** 1.95.0 or higher
+- **VS Code** 1.105.0 or higher
 - **Node.js** 20.0.0 or higher
 - **.NET SDK** 9.0 or higher (for HttpRecorder plugin)
 
@@ -42,8 +114,8 @@ The Traffic Recorder extension enables automated HTTP traffic recording directly
 
 ### 1. Clone Repository
 ```bash
-git clone https://github.com/maxgolov/HttpRecorder
-cd HttpRecorder/extensions/traffic-recorder
+git clone https://github.com/maxgolov/HttpRecorderNext
+cd HttpRecorderNext/extensions/traffic-recorder
 ```
 
 ### 2. Install Dependencies
@@ -171,7 +243,7 @@ Access via `File > Preferences > Settings` → Search "Traffic Recorder"
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `trafficRecorder.devProxyPort` | `8000` | Port for Dev Proxy |
+| `trafficRecorder.devProxyPort` | `8080` | Port for Dev Proxy |
 | `trafficRecorder.outputDirectory` | `./.http-recorder` | HAR output directory |
 | `trafficRecorder.autoStart` | `false` | Auto-start proxy with tests |
 | `trafficRecorder.useBetaVersion` | `true` | Use Dev Proxy Beta version |
@@ -183,7 +255,7 @@ Edit `devproxyrc.json`:
 
 ```json
 {
-  "port": 8000,
+  "port": 8080,
   "httpRecorder": {
     "outputDirectory": "./.http-recorder",
     "mode": "Record",
@@ -206,7 +278,7 @@ Edit `playwright.config.ts`:
 export default defineConfig({
   use: {
     proxy: {
-      server: 'http://localhost:8000',
+      server: 'http://localhost:8080',
       bypass: 'localhost,127.0.0.1'
     },
     ignoreHTTPSErrors: true
@@ -231,7 +303,7 @@ export default defineConfig({
 
 **Solutions**:
 1. Verify Dev Proxy is running: Check terminal output
-2. Check port availability: `netstat -ano | findstr :8000` (Windows) or `lsof -i :8000` (Unix)
+2. Check port availability: `netstat -ano | findstr :8080` (Windows) or `lsof -i :8080` (Unix)
 3. Ensure proxy config in `playwright.config.ts` matches Dev Proxy port
 
 ### Certificate Errors
@@ -359,8 +431,8 @@ MIT License - See [LICENSE](../../LICENSE)
 
 ## 💬 Support
 
-- **Issues**: [GitHub Issues](https://github.com/maxgolov/HttpRecorder/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/maxgolov/HttpRecorder/discussions)
+- **Issues**: [GitHub Issues](https://github.com/maxgolov/HttpRecorderNext/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/maxgolov/HttpRecorderNext/discussions)
 - **Dev Proxy**: [Microsoft Learn Q&A](https://learn.microsoft.com/answers/)
 
 ## 🎓 Learning Resources
@@ -372,6 +444,6 @@ MIT License - See [LICENSE](../../LICENSE)
 
 ---
 
-**Version**: 0.1.0  
-**Last Updated**: November 2024  
-**Maintainer**: maxgolov
+**Version**: 0.7.0  
+**Last Updated**: November 2025  
+**Maintainer**: Max Golovanov <max.golovanov+github@gmail.com>

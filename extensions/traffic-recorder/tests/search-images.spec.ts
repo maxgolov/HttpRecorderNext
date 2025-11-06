@@ -19,7 +19,7 @@ import { expect, test } from '@playwright/test';
 // Configure browser to use Dev Proxy
 test.use({
   proxy: {
-    server: 'http://localhost:8000',
+    server: 'http://localhost:8080',
     bypass: '<-loopback>' // Critical: allows localhost interception
   },
   // Ignore HTTPS errors since Dev Proxy uses self-signed certificates

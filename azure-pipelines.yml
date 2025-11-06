@@ -1,32 +1,64 @@
 
 pool:
-  vmImage: 'windows-2019'
+  vmImage: 'ubuntu-latest'
 
 variables:
   buildConfiguration: 'Release'
 
 steps:
-- task: GitVersion@4
+- task: GitVersion@5
   displayName: Git Version
+
+- task: UseDotNet@2
+  displayName: 'Install .NET SDK'
   inputs:
-    updateAssemblyInfo: false
+    version: '9.x'
 
-- script: dotnet build --configuration $(buildConfiguration) -p:Version=$(GitVersion.NuGetVersionV2) -p:FileVersion=$(GitVersion.AssemblySemVer) -p:InformationalVersion=$(GitVersion.InformationalVersion)
-  displayName: Build
+- task: NodeTool@0
+  displayName: 'Install Node.js'
+  inputs:
+    versionSpec: '20.x'
 
-- script: dotnet test --no-build --configuration $(buildConfiguration) --logger:trx
-  displayName: Test
+- script: |
+    sudo apt-get update
+    sudo apt-get install -y xvfb libgtk-3-0 libxss1 libasound2 libsecret-1-0
+  displayName: 'Install Xvfb and dependencies'
+
+- script: |
+    chmod +x build.sh
+    ./build.sh --skip-tests
+  displayName: 'Build all projects'
+
+- script: |
+    export DISPLAY=:99
+    Xvfb :99 -screen 0 1920x1080x24 &> /dev/null &
+    XVFB_PID=$!
+    sleep 2
+    dotnet test HttpRecorder.Tests/HttpRecorder.Tests.csproj --no-build --configuration $(buildConfiguration) --framework net9.0 --logger:trx
+    cd extensions/traffic-recorder
+    npm test
+    TEST_EXIT=$?
+    cd ../..
+    kill $XVFB_PID 2>/dev/null || true
+    exit $TEST_EXIT
+  displayName: 'Run all tests'
 
 - task: PublishTestResults@2
-  displayName: Publish Tests Results
+  displayName: Publish Test Results
+  condition: succeededOrFailed()
   inputs:
     testResultsFormat: 'VSTest'
     testResultsFiles: '**/*.trx'
     mergeTestResults: true
-    testRunTitle: 'Unit tests'
+    testRunTitle: 'All tests'
 
-- script: dotnet pack --no-build --configuration $(buildConfiguration) -p:Version=$(GitVersion.NuGetVersionV2) --output $(build.artifactStagingDirectory)
-  displayName: Pack
+- script: dotnet pack DevProxyExtension/HttpRecorder.DevProxy/HttpRecorder.DevProxy.csproj --no-build --configuration $(buildConfiguration) -p:Version=$(GitVersion.NuGetVersionV2) --output $(build.artifactStagingDirectory)
+  displayName: Pack NuGet
+
+- script: |
+    cd extensions/traffic-recorder
+    npx @vscode/vsce package --out $(build.artifactStagingDirectory)/traffic-cop-$(GitVersion.NuGetVersionV2).vsix
+  displayName: Pack VSIX
 
 - task: PublishBuildArtifacts@1
   displayName: 'Publish Build Artifacts'

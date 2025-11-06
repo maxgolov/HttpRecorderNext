@@ -44,6 +44,24 @@ public sealed class HttpRecorderPlugin(
         public required DateTimeOffset StartTime { get; init; }
     }
 
+    /// <summary>
+    /// Generate a DJB2 hash for request matching
+    /// </summary>
+    private static string GenerateRequestKey(Titanium.Web.Proxy.Http.Request request, int sessionHashCode)
+    {
+        // Use DJB2 hash algorithm for reliable matching
+        // Combine: Method + URL + Session for uniqueness
+        var keyString = $"{request.Method}|{request.RequestUri}|{sessionHashCode}";
+        
+        ulong hash = 5381;
+        foreach (char c in keyString)
+        {
+            hash = ((hash << 5) + hash) + c; // hash * 33 + c
+        }
+        
+        return hash.ToString("X16"); // Return as hex string
+    }
+
     public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         if (!e.HasRequestUrlMatch(UrlsToWatch))
@@ -66,17 +84,10 @@ public sealed class HttpRecorderPlugin(
                 StartTime = startTime
             };
 
-            // Use session ID as unique key to handle concurrent requests to same URL
-            var key = e.Session.HttpClient.ProcessId.ToString();
-            if (!string.IsNullOrEmpty(key))
-            {
-                _pendingInteractions[key] = pending;
-                Logger.LogInformation("Stored pending request #{Id} with key {Key}", interactionId, key);
-            }
-            else
-            {
-                Logger.LogWarning("Empty session key for request #{Id}", interactionId);
-            }
+            // Use DJB2 hash for unique request identification
+            var key = GenerateRequestKey(e.Session.HttpClient.Request, e.Session.GetHashCode());
+            _pendingInteractions[key] = pending;
+            Logger.LogInformation("Stored pending request #{Id} with key {Key}", interactionId, key);
 
             Logger.LogInformation(
                 "Recording request #{Id}: {Method} {Url}",
@@ -105,19 +116,13 @@ public sealed class HttpRecorderPlugin(
                 e.Session.HttpClient.Request.RequestUri,
                 e.Session.HttpClient.Response.StatusCode);
 
-            // Use same session ID as key
-            var key = e.Session.HttpClient.ProcessId.ToString();
+            // Use DJB2 hash to match request
+            var key = GenerateRequestKey(e.Session.HttpClient.Request, e.Session.GetHashCode());
             
-            if (string.IsNullOrEmpty(key))
-            {
-                Logger.LogWarning("Empty session key for response from {Url}", e.Session.HttpClient.Request.RequestUri);
-                return;
-            }
-
             if (!_pendingInteractions.TryRemove(key, out var pending))
             {
-                Logger.LogWarning("No matching request found for response from {Url} (key: {Key})",
-                    e.Session.HttpClient.Request.RequestUri, key);
+                Logger.LogWarning("No matching request found for response from {Url} (key: {Key}). Pending count: {Count}",
+                    e.Session.HttpClient.Request.RequestUri, key, _pendingInteractions.Count);
                 return;
             }
 
@@ -177,7 +182,14 @@ public sealed class HttpRecorderPlugin(
         }
 
         // Add body if available and configured
-        if (Configuration.IncludeBodies && proxyRequest.Body != null && proxyRequest.Body.Length > 0)
+        // Only add content for methods that support request bodies (POST, PUT, PATCH, DELETE)
+        // Never add content for GET, HEAD, OPTIONS, TRACE
+        var methodSupportsBody = !string.Equals(proxyRequest.Method, "GET", StringComparison.OrdinalIgnoreCase) &&
+                                  !string.Equals(proxyRequest.Method, "HEAD", StringComparison.OrdinalIgnoreCase) &&
+                                  !string.Equals(proxyRequest.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase) &&
+                                  !string.Equals(proxyRequest.Method, "TRACE", StringComparison.OrdinalIgnoreCase);
+        
+        if (Configuration.IncludeBodies && methodSupportsBody && proxyRequest.Body != null && proxyRequest.Body.Length > 0)
         {
             request.Content = new ByteArrayContent(proxyRequest.Body);
             
@@ -217,7 +229,18 @@ public sealed class HttpRecorderPlugin(
         }
 
         // Add body if available and configured
-        if (Configuration.IncludeBodies && proxyResponse.Body != null && proxyResponse.Body.Length > 0)
+        // Only add content for:
+        // - Methods that support response bodies (not HEAD)
+        // - Status codes that can have content (not 204 No Content, 304 Not Modified, 1xx informational)
+        var requestMethod = session.HttpClient.Request.Method ?? "GET";
+        var statusCode = proxyResponse.StatusCode;
+        var methodSupportsBody = !string.Equals(requestMethod, "HEAD", StringComparison.OrdinalIgnoreCase);
+        var statusSupportsBody = statusCode != 204 &&  // No Content
+                                  statusCode != 304 &&  // Not Modified
+                                  (statusCode < 100 || statusCode >= 200);  // Not 1xx informational
+        
+        if (Configuration.IncludeBodies && methodSupportsBody && statusSupportsBody && 
+            proxyResponse.Body != null && proxyResponse.Body.Length > 0)
         {
             response.Content = new ByteArrayContent(proxyResponse.Body);
             
@@ -302,6 +325,19 @@ public sealed class HttpRecorderPlugin(
         await CloseHarFileAsync();
     }
 
+    // Ensure cleanup happens even if AfterRecordingStop isn't called
+    ~HttpRecorderPlugin()
+    {
+        try
+        {
+            CloseHarFileAsync().GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // Ignore errors in finalizer
+        }
+    }
+
     private async Task InitializeHarFileAsync(CancellationToken cancellationToken)
     {
         try
@@ -373,6 +409,8 @@ public sealed class HttpRecorderPlugin(
                 entryJson.Split(Environment.NewLine).Select(line => "      " + line));
 
             await _harFileWriter.WriteAsync(indentedJson);
+            
+            // Flush after each entry to minimize data loss on crash
             await _harFileWriter.FlushAsync();
         }
         catch (Exception ex)
@@ -394,7 +432,11 @@ public sealed class HttpRecorderPlugin(
             await _harFileWriter.WriteLineAsync("    ]");
             await _harFileWriter.WriteLineAsync("  }");
             await _harFileWriter.WriteLineAsync("}");
+            
+            // CRITICAL: Force flush before closing
             await _harFileWriter.FlushAsync();
+            
+            // Close and dispose the writer
             _harFileWriter.Close();
             await _harFileWriter.DisposeAsync();
             _harFileWriter = null;

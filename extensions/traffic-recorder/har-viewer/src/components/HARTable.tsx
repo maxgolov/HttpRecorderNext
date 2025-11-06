@@ -1,22 +1,22 @@
 import {
-    Input,
-    Table,
-    TableBody,
-    TableCell,
-    TableCellLayout,
-    TableColumnDefinition,
-    TableHeader,
-    TableHeaderCell,
-    TableRow,
-    createTableColumn,
-    makeStyles,
-    tokens,
-    useTableFeatures,
-    useTableSort
+  Input,
+  Table,
+  TableBody,
+  TableCell,
+  TableCellLayout,
+  TableColumnDefinition,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+  createTableColumn,
+  makeStyles,
+  tokens,
+  useTableFeatures,
+  useTableSort
 } from '@fluentui/react-components';
 import {
-    Image20Regular,
-    Search20Regular
+  Image20Regular,
+  Search20Regular
 } from '@fluentui/react-icons';
 import { useMemo, useState } from 'react';
 import { HAREntryDisplay } from '../types';
@@ -78,6 +78,34 @@ const useStyles = makeStyles({
   statusError: {
     color: tokens.colorPaletteRedForeground2,
   },
+  timestampCell: {
+    minWidth: '180px',
+    maxWidth: '180px',
+  },
+  methodCell: {
+    minWidth: '80px',
+    maxWidth: '80px',
+  },
+  pathCell: {
+    minWidth: '300px',
+    flex: 1,
+  },
+  statusCell: {
+    minWidth: '60px',
+    maxWidth: '60px',
+  },
+  typeCell: {
+    minWidth: '100px',
+    maxWidth: '100px',
+  },
+  sizeCell: {
+    minWidth: '80px',
+    maxWidth: '80px',
+  },
+  timeCell: {
+    minWidth: '80px',
+    maxWidth: '80px',
+  },
 });
 
 interface HARTableProps {
@@ -95,6 +123,23 @@ const formatSize = (bytes: number): string => {
 const formatTime = (ms: number): string => {
   if (ms < 1000) return `${ms.toFixed(0)} ms`;
   return `${(ms / 1000).toFixed(2)} s`;
+};
+
+const formatTimestamp = (isoString: string): string => {
+  // Convert ISO 8601 to format: 2020-12-09T16:09:53+00:00
+  // Input might be in format: 2020-12-09T16:09:53.123Z or 2020-12-09T16:09:53Z
+  try {
+    const date = new Date(isoString);
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const hours = String(date.getUTCHours()).padStart(2, '0');
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}+00:00`;
+  } catch (e) {
+    return isoString; // Return original if parsing fails
+  }
 };
 
 export function HARTable({ entries, selectedEntry, onSelectEntry }: HARTableProps) {
@@ -116,6 +161,16 @@ export function HARTable({ entries, selectedEntry, onSelectEntry }: HARTableProp
 
   // Define table columns
   const columns: TableColumnDefinition<HAREntryDisplay>[] = [
+    createTableColumn<HAREntryDisplay>({
+      columnId: 'timestamp',
+      compare: (a, b) => a.startedDateTime.localeCompare(b.startedDateTime),
+      renderHeaderCell: () => 'Timestamp',
+      renderCell: (entry) => (
+        <TableCellLayout>
+          {formatTimestamp(entry.startedDateTime)}
+        </TableCellLayout>
+      ),
+    }),
     createTableColumn<HAREntryDisplay>({
       columnId: 'method',
       compare: (a, b) => a.method.localeCompare(b.method),
@@ -238,15 +293,28 @@ export function HARTable({ entries, selectedEntry, onSelectEntry }: HARTableProp
         >
           <TableHeader>
             <TableRow>
-              {columns.map((column) => (
-                <TableHeaderCell
-                  key={column.columnId}
-                  onClick={(e) => toggleColumnSort(e, column.columnId)}
-                  sortDirection={getSortDirection(column.columnId)}
-                >
-                  {column.renderHeaderCell()}
-                </TableHeaderCell>
-              ))}
+              {columns.map((column) => {
+                const cellStyle = 
+                  column.columnId === 'timestamp' ? styles.timestampCell :
+                  column.columnId === 'method' ? styles.methodCell :
+                  column.columnId === 'path' ? styles.pathCell :
+                  column.columnId === 'status' ? styles.statusCell :
+                  column.columnId === 'type' ? styles.typeCell :
+                  column.columnId === 'size' ? styles.sizeCell :
+                  column.columnId === 'time' ? styles.timeCell :
+                  '';
+                
+                return (
+                  <TableHeaderCell
+                    key={column.columnId}
+                    onClick={(e) => toggleColumnSort(e, column.columnId)}
+                    sortDirection={getSortDirection(column.columnId)}
+                    className={cellStyle}
+                  >
+                    {column.renderHeaderCell()}
+                  </TableHeaderCell>
+                );
+              })}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -262,11 +330,23 @@ export function HARTable({ entries, selectedEntry, onSelectEntry }: HARTableProp
                   cursor: 'pointer',
                 }}
               >
-                {columns.map((column) => (
-                  <TableCell key={column.columnId}>
-                    {column.renderCell(item)}
-                  </TableCell>
-                ))}
+                {columns.map((column) => {
+                  const cellStyle = 
+                    column.columnId === 'timestamp' ? styles.timestampCell :
+                    column.columnId === 'method' ? styles.methodCell :
+                    column.columnId === 'path' ? styles.pathCell :
+                    column.columnId === 'status' ? styles.statusCell :
+                    column.columnId === 'type' ? styles.typeCell :
+                    column.columnId === 'size' ? styles.sizeCell :
+                    column.columnId === 'time' ? styles.timeCell :
+                    '';
+                  
+                  return (
+                    <TableCell key={column.columnId} className={cellStyle}>
+                      {column.renderCell(item)}
+                    </TableCell>
+                  );
+                })}
               </TableRow>
             ))}
           </TableBody>

@@ -12,20 +12,34 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
 import * as vscode from 'vscode';
+import { FrameworkDetectionOrchestrator } from './frameworks/orchestrator';
+import { DiscoveredTestFrameworks, TestFrameworkInfo } from './frameworks/types';
 import { HARViewerProvider } from './harViewer';
 
 const execFileAsync = promisify(execFile);
 
 type ProxyStatus = 'stopped' | 'starting' | 'started' | 'stopping';
 
+interface ProxyApiInfo {
+  recording?: boolean;
+  configFile?: string;
+}
+
 interface DevProxyState {
   process: ChildProcess | null;
   status: ProxyStatus;
   port: number;
+  apiPort: number;
   host: string;
   outputDir: string;
   useBeta: boolean;
   startTime?: Date;
+  apiInfo?: ProxyApiInfo;
+  requestCount?: number;
+  currentHarFile?: string;
+  lastRequestTime?: number; // Timestamp of last request count change
+  recordingTaskTerminal?: vscode.Terminal; // Track terminal for Record All Tests
+  discoveredFrameworks?: DiscoveredTestFrameworks; // Cache discovered frameworks
 }
 
 const BRAILLE_SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -35,7 +49,8 @@ let spinnerIndex = 0;
 let devProxyState: DevProxyState = {
   process: null,
   status: 'stopped',
-  port: 8000,
+  port: 8080,
+  apiPort: 8897,
   host: 'localhost',
   outputDir: '.http-recorder',
   useBeta: true
@@ -53,14 +68,76 @@ class TrafficRecorderTreeProvider implements vscode.TreeDataProvider<TreeItem> {
   }
 
   async checkPortStatus(): Promise<void> {
-    // If we think it's started but the port is not in use, update status
+    // If we think it's started, verify via REST API
     if (devProxyState.status === 'started') {
-      const portInUse = await isPortInUse(devProxyState.port, devProxyState.host);
-      if (!portInUse) {
+      try {
+        const response = await fetch(`http://${devProxyState.host}:${devProxyState.apiPort}/proxy`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(2000)
+        });
+        
+        if (response.ok) {
+          const apiInfo = await response.json() as ProxyApiInfo;
+          devProxyState.apiInfo = apiInfo;
+          
+          // Find and count requests in current HAR file
+          await this.updateRequestCount();
+          
+          // Still running, refresh to show updated info
+          this.refresh();
+        } else {
+          // API responded but with error - consider it stopped
+          devProxyState.status = 'stopped';
+          devProxyState.process = null;
+          devProxyState.apiInfo = undefined;
+          this.refresh();
+        }
+      } catch (error) {
+        // API not reachable - proxy is stopped
         devProxyState.status = 'stopped';
         devProxyState.process = null;
+        devProxyState.apiInfo = undefined;
         this.refresh();
       }
+    }
+  }
+
+  async updateRequestCount(): Promise<void> {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) return;
+
+    const outputDirPath = path.join(workspaceFolder, devProxyState.outputDir);
+    if (!fs.existsSync(outputDirPath)) return;
+
+    // Find the most recent HAR file (session_*.har)
+    const files = fs.readdirSync(outputDirPath);
+    const harFiles = files.filter(f => f.startsWith('session_') && f.endsWith('.har'));
+    
+    if (harFiles.length > 0) {
+      // Sort by modification time, get the newest
+      const harFilePaths = harFiles.map(f => ({
+        name: f,
+        path: path.join(outputDirPath, f),
+        mtime: fs.statSync(path.join(outputDirPath, f)).mtime
+      }));
+      
+      harFilePaths.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+      const currentFile = harFilePaths[0];
+      
+      devProxyState.currentHarFile = currentFile.name;
+      const newCount = await countRequestsInHAR(currentFile.path);
+      
+      // Track if count has changed (request activity)
+      if (newCount !== devProxyState.requestCount) {
+        devProxyState.lastRequestTime = Date.now();
+        
+        // Advance spinner when new request arrives
+        if (newCount > (devProxyState.requestCount || 0)) {
+          spinnerIndex = (spinnerIndex + 1) % BRAILLE_SPINNER.length;
+        }
+      }
+      
+      devProxyState.requestCount = newCount;
     }
   }
 
@@ -81,7 +158,7 @@ class TrafficRecorderTreeProvider implements vscode.TreeDataProvider<TreeItem> {
     // Check port status asynchronously
     this.checkPortStatus();
 
-    // Status with action button
+    // Status with action button - combined with host:port
     let statusLabel: string;
     let statusIcon: string;
     let statusIconColor: vscode.ThemeColor | undefined;
@@ -89,26 +166,26 @@ class TrafficRecorderTreeProvider implements vscode.TreeDataProvider<TreeItem> {
     
     switch (devProxyState.status) {
       case 'starting':
-        statusLabel = 'Starting...';
+        statusLabel = `▶️ Starting (${devProxyState.host}:${devProxyState.port})`;
         statusIcon = 'loading~spin';
         statusIconColor = undefined;
         statusCommand = undefined; // Disabled during start
         break;
       case 'started':
-        statusLabel = 'Stop';
-        statusIcon = 'debug-stop';
-        statusIconColor = undefined;
+        statusLabel = `⏹️ Running (${devProxyState.host}:${devProxyState.port})`;
+        statusIcon = 'circle-filled';
+        statusIconColor = new vscode.ThemeColor('testing.iconPassed');
         statusCommand = 'traffic-recorder.stopProxy';
         break;
       case 'stopping':
-        statusLabel = 'Stopping...';
+        statusLabel = `⏹️ Stopping (${devProxyState.host}:${devProxyState.port})`;
         statusIcon = 'loading~spin';
         statusIconColor = undefined;
         statusCommand = undefined; // Disabled during stop
         break;
       case 'stopped':
       default:
-        statusLabel = 'Start';
+        statusLabel = `▶️ Start (${devProxyState.host}:${devProxyState.port})`;
         statusIcon = 'circle-filled';
         statusIconColor = new vscode.ThemeColor('testing.iconFailed');
         statusCommand = 'traffic-recorder.startProxy';
@@ -127,13 +204,67 @@ class TrafficRecorderTreeProvider implements vscode.TreeDataProvider<TreeItem> {
     }
     items.push(statusItem);
 
-    // Host/Port item
-    const hostItem = new TreeItem(
-      `${devProxyState.host}:${devProxyState.port}`,
-      vscode.TreeItemCollapsibleState.None
-    );
-    hostItem.iconPath = new vscode.ThemeIcon('globe');
-    items.push(hostItem);
+    // Show recording status if proxy is running
+    if (devProxyState.status === 'started') {
+      const now = Date.now();
+      const requestCount = devProxyState.requestCount || 0;
+      const lastRequestTime = devProxyState.lastRequestTime || 0;
+      const timeSinceLastRequest = now - lastRequestTime;
+      const isTaskRunning = devProxyState.recordingTaskTerminal !== undefined;
+      
+      let recordingStatus: string;
+      let recordingIcon: string;
+      let recordingIconColor: vscode.ThemeColor | undefined;
+      let recordingTooltip: string;
+      
+      if (requestCount === 0) {
+        // No requests yet - show "Idle"
+        recordingStatus = 'Idle';
+        recordingIcon = 'star';
+        recordingIconColor = new vscode.ThemeColor('charts.yellow');
+        recordingTooltip = 'No requests recorded yet';
+      } else if (timeSinceLastRequest < 10000) {
+        // Active recording - requests coming in within last 10 seconds
+        recordingStatus = `${BRAILLE_SPINNER[spinnerIndex]} Recording`;
+        recordingIcon = 'record';
+        recordingIconColor = new vscode.ThemeColor('errorForeground');
+        recordingTooltip = 'Actively recording HTTP traffic';
+      } else if (isTaskRunning) {
+        // Task is running but no recent requests - waiting
+        recordingStatus = `⟳ Waiting for requests`;
+        recordingIcon = 'watch';
+        recordingIconColor = new vscode.ThemeColor('charts.orange');
+        recordingTooltip = 'Test task is running, waiting for HTTP traffic';
+      } else {
+        // No recent activity and no task running - idle
+        recordingStatus = 'Idle';
+        recordingIcon = 'star';
+        recordingIconColor = new vscode.ThemeColor('charts.yellow');
+        recordingTooltip = `No recent activity (${requestCount} requests recorded)`;
+      }
+
+      const recordingItem = new TreeItem(recordingStatus, vscode.TreeItemCollapsibleState.None);
+      recordingItem.iconPath = new vscode.ThemeIcon(recordingIcon, recordingIconColor);
+      recordingItem.tooltip = recordingTooltip;
+      items.push(recordingItem);
+
+      // Show config file if available
+      if (devProxyState.apiInfo?.configFile) {
+        const configFileName = path.basename(devProxyState.apiInfo.configFile);
+        const configItem = new TreeItem(`📄 ${configFileName}`, vscode.TreeItemCollapsibleState.None);
+        configItem.tooltip = devProxyState.apiInfo.configFile;
+        items.push(configItem);
+      }
+
+      // Show request count if available
+      if (requestCount > 0 && devProxyState.currentHarFile) {
+        const countLabel = `📊 ${requestCount} requests`;
+        const countItem = new TreeItem(countLabel, vscode.TreeItemCollapsibleState.None);
+        countItem.iconPath = new vscode.ThemeIcon('graph-line');
+        countItem.tooltip = `${devProxyState.currentHarFile} - ${requestCount} HTTP requests captured`;
+        items.push(countItem);
+      }
+    }
 
     // Output directory item
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -144,7 +275,6 @@ class TrafficRecorderTreeProvider implements vscode.TreeDataProvider<TreeItem> {
       outputDirDisplay,
       vscode.TreeItemCollapsibleState.None
     );
-    outputItem.iconPath = new vscode.ThemeIcon('folder');
     
     // Make it clickable to reveal in Explorer
     if (workspaceFolder) {
@@ -159,19 +289,73 @@ class TrafficRecorderTreeProvider implements vscode.TreeDataProvider<TreeItem> {
     
     items.push(outputItem);
 
-    // Run tests button (only show if workspace has tests directory)
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (workspaceRoot) {
-      const testsDir = path.join(workspaceRoot, 'tests');
-      if (fs.existsSync(testsDir)) {
-        const runTestsItem = new TreeItem('Run All Tests', vscode.TreeItemCollapsibleState.None);
-        runTestsItem.iconPath = new vscode.ThemeIcon('beaker');
-        runTestsItem.command = {
-          command: 'traffic-recorder.runTests',
-          title: 'Run All Tests'
+    // Test framework buttons - show discovered frameworks
+    if (devProxyState.discoveredFrameworks) {
+      const frameworks = devProxyState.discoveredFrameworks;
+      const playwright = getFramework(frameworks, 'Playwright');
+      const vitest = getFramework(frameworks, 'Vitest');
+      const pytest = getFramework(frameworks, 'pytest');
+      
+      if (playwright) {
+        const playwrightItem = new TreeItem(`${playwright.icon} Record Playwright Tests`, vscode.TreeItemCollapsibleState.None);
+        playwrightItem.iconPath = new vscode.ThemeIcon('beaker');
+        playwrightItem.tooltip = `Run Playwright tests with traffic recording\n${playwright.workingDirectory}`;
+        playwrightItem.command = {
+          command: 'traffic-recorder.runPlaywrightTests',
+          title: 'Record Playwright Tests'
         };
-        items.push(runTestsItem);
+        items.push(playwrightItem);
       }
+      
+      if (vitest) {
+        const vitestItem = new TreeItem(`${vitest.icon} Record Vitest Tests`, vscode.TreeItemCollapsibleState.None);
+        vitestItem.iconPath = new vscode.ThemeIcon('beaker');
+        vitestItem.tooltip = `Run Vitest tests with traffic recording\n${vitest.workingDirectory}`;
+        vitestItem.command = {
+          command: 'traffic-recorder.runVitestTests',
+          title: 'Record Vitest Tests'
+        };
+        items.push(vitestItem);
+      }
+      
+      // Check for any npm test script (Jest, Mocha, etc.)
+      const jest = getFramework(frameworks, 'Jest');
+      const mocha = getFramework(frameworks, 'Mocha');
+      const npmTest = jest || mocha;
+      
+      if (npmTest) {
+        const npmItem = new TreeItem(`${npmTest.icon} Record ${npmTest.name} Tests`, vscode.TreeItemCollapsibleState.None);
+        npmItem.iconPath = new vscode.ThemeIcon('beaker');
+        npmItem.tooltip = `Run ${npmTest.name} tests with traffic recording\n${npmTest.workingDirectory}`;
+        npmItem.command = {
+          command: 'traffic-recorder.runNpmTests',
+          title: 'Record npm Tests'
+        };
+        items.push(npmItem);
+      }
+      
+      if (pytest) {
+        const pytestItem = new TreeItem(`${pytest.icon} Record pytest Tests`, vscode.TreeItemCollapsibleState.None);
+        pytestItem.iconPath = new vscode.ThemeIcon('beaker');
+        pytestItem.tooltip = `Run pytest with traffic recording\n${pytest.workingDirectory}`;
+        pytestItem.command = {
+          command: 'traffic-recorder.runPytestTests',
+          title: 'Record pytest Tests'
+        };
+        items.push(pytestItem);
+      }
+    }
+
+    // Certificate download link (show when proxy is running)
+    if (devProxyState.status === 'started') {
+      const certItem = new TreeItem('📜 Download Dev Certificate', vscode.TreeItemCollapsibleState.None);
+      certItem.iconPath = new vscode.ThemeIcon('shield');
+      certItem.tooltip = 'Download and install the Dev Proxy root certificate to trust HTTPS traffic';
+      certItem.command = {
+        command: 'traffic-recorder.downloadCertificate',
+        title: 'Download Dev Certificate'
+      };
+      items.push(certItem);
     }
 
     return items;
@@ -257,7 +441,8 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Initialize configuration
   const config = vscode.workspace.getConfiguration('trafficRecorder');
-  devProxyState.port = config.get<number>('devProxyPort', 8000);
+  devProxyState.host = config.get<string>('devProxyHost', 'localhost');
+  devProxyState.port = config.get<number>('devProxyPort', 8080);
   devProxyState.outputDir = config.get<string>('outputDirectory', '.http-recorder');
   devProxyState.useBeta = config.get<boolean>('useBetaVersion', true);
 
@@ -271,6 +456,76 @@ export function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(treeView);
 
+  // Periodic status refresh when proxy is running (every 5 seconds)
+  const statusRefreshInterval = setInterval(() => {
+    if (devProxyState.status === 'started') {
+      treeDataProvider.checkPortStatus();
+    }
+  }, 5000);
+  context.subscriptions.push({ dispose: () => clearInterval(statusRefreshInterval) });
+
+  // Detect test frameworks on activation and periodically
+  async function refreshTestFrameworks() {
+    const config = vscode.workspace.getConfiguration('trafficRecorder');
+    const autoDetect = config.get<boolean>('autoDetectFrameworks', true);
+    
+    if (autoDetect) {
+      devProxyState.discoveredFrameworks = await detectTestFrameworks();
+    } else {
+      // Clear frameworks if auto-detect is disabled
+      devProxyState.discoveredFrameworks = {
+        javascript: [],
+        python: [],
+        java: [],
+        csharp: [],
+        go: [],
+        ruby: [],
+        php: [],
+        swift: [],
+        kotlin: [],
+        all: []
+      };
+    }
+    treeDataProvider.refresh();
+  }
+  
+  refreshTestFrameworks(); // Initial detection
+  
+  // Re-detect frameworks when files change
+  const fileWatcher = vscode.workspace.createFileSystemWatcher('**/{package.json,playwright.config.*,vitest.config.*,vite.config.*,pytest.ini,pyproject.toml,setup.cfg}');
+  fileWatcher.onDidCreate(() => refreshTestFrameworks());
+  fileWatcher.onDidChange(() => refreshTestFrameworks());
+  fileWatcher.onDidDelete(() => refreshTestFrameworks());
+  context.subscriptions.push(fileWatcher);
+
+  // Listen for configuration changes and update state
+  const configChangeListener = vscode.workspace.onDidChangeConfiguration(e => {
+    if (e.affectsConfiguration('trafficRecorder.devProxyPort')) {
+      const config = vscode.workspace.getConfiguration('trafficRecorder');
+      devProxyState.port = config.get<number>('devProxyPort', 8080);
+      treeDataProvider.refresh();
+    }
+    if (e.affectsConfiguration('trafficRecorder.devProxyHost')) {
+      const config = vscode.workspace.getConfiguration('trafficRecorder');
+      devProxyState.host = config.get<string>('devProxyHost', 'localhost');
+      treeDataProvider.refresh();
+    }
+    if (e.affectsConfiguration('trafficRecorder.outputDirectory')) {
+      const config = vscode.workspace.getConfiguration('trafficRecorder');
+      devProxyState.outputDir = config.get<string>('outputDirectory', '.http-recorder');
+      ensureOutputDirectory();
+      treeDataProvider.refresh();
+    }
+    if (e.affectsConfiguration('trafficRecorder.useBetaVersion')) {
+      const config = vscode.workspace.getConfiguration('trafficRecorder');
+      devProxyState.useBeta = config.get<boolean>('useBetaVersion', true);
+    }
+    if (e.affectsConfiguration('trafficRecorder.autoDetectFrameworks')) {
+      refreshTestFrameworks();
+    }
+  });
+  context.subscriptions.push(configChangeListener);
+
   // Check if workspace has tests directory for "Run All Tests" command
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (workspaceRoot) {
@@ -283,13 +538,43 @@ export function activate(context: vscode.ExtensionContext) {
   const harViewerDisposables = HARViewerProvider.register(context);
   context.subscriptions.push(...harViewerDisposables);
 
+  // Register MCP Server Definition Provider  
+  context.subscriptions.push(
+    vscode.lm.registerMcpServerDefinitionProvider('trafficCopMcp', {
+      async provideMcpServerDefinitions() {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!workspaceFolder) {
+          return [];
+        }
+
+        const recordingsDir = path.join(workspaceFolder, devProxyState.outputDir);
+        const serverPath = path.join(context.extensionPath, 'dist', 'mcp', 'server.js');
+
+        return [{
+          label: 'Traffic Cop - HAR Analysis',
+          command: process.execPath, // Use Node.js
+          args: [serverPath],
+          env: {
+            RECORDINGS_DIR: recordingsDir,
+            TRANSPORT: 'stdio',
+          },
+        }];
+      },
+    })
+  );
+
   // Register commands
   context.subscriptions.push(
     vscode.commands.registerCommand('traffic-recorder.startProxy', startProxy),
     vscode.commands.registerCommand('traffic-recorder.stopProxy', stopProxy),
     vscode.commands.registerCommand('traffic-recorder.runTests', runTests),
     vscode.commands.registerCommand('traffic-recorder.runCurrentTest', runCurrentTest),
-    vscode.commands.registerCommand('traffic-recorder.installDevProxy', installDevProxy)
+    vscode.commands.registerCommand('traffic-recorder.installDevProxy', installDevProxy),
+    vscode.commands.registerCommand('traffic-recorder.downloadCertificate', downloadCertificate),
+    vscode.commands.registerCommand('traffic-recorder.runPlaywrightTests', () => runFrameworkTests('playwright')),
+    vscode.commands.registerCommand('traffic-recorder.runVitestTests', () => runFrameworkTests('vitest')),
+    vscode.commands.registerCommand('traffic-recorder.runNpmTests', () => runFrameworkTests('npm')),
+    vscode.commands.registerCommand('traffic-recorder.runPytestTests', () => runFrameworkTests('pytest'))
   );
 
   // Status bar item
@@ -361,7 +646,7 @@ async function startProxy() {
     // Get configuration
     const config = vscode.workspace.getConfiguration('trafficRecorder');
     const host = config.get<string>('devProxyHost', 'localhost');
-    const port = config.get<number>('devProxyPort', 8000);
+    const port = config.get<number>('devProxyPort', 8080);
     const outputDir = config.get<string>('outputDirectory', '.http-recorder');
     const useBeta = config.get<boolean>('useBetaVersion', true);
     const useLocalPlugin = config.get<boolean>('useLocalPlugin', false);
@@ -496,7 +781,33 @@ async function startProxy() {
 
     // Handle process output
     proxyProcess.stdout?.on('data', (data) => {
-      outputChannel.append(data.toString());
+      const output = data.toString();
+      outputChannel.append(output);
+      
+      // Detect when Dev Proxy is actually listening
+      if (output.includes('Dev Proxy listening on') && devProxyState.status === 'starting') {
+        if (spinnerInterval) {
+          clearInterval(spinnerInterval);
+          spinnerInterval = null;
+        }
+        devProxyState.status = 'started';
+        treeDataProvider.refresh();
+        updateStatusBar();
+        
+        // Fetch initial API status
+        setTimeout(async () => {
+          try {
+            const response = await fetch(`http://${devProxyState.host}:${devProxyState.apiPort}/proxy`);
+            if (response.ok) {
+              const apiInfo = await response.json() as ProxyApiInfo;
+              devProxyState.apiInfo = apiInfo;
+              treeDataProvider.refresh();
+            }
+          } catch (error) {
+            // Silently fail - status will be checked on next interval
+          }
+        }, 1000);
+      }
     });
 
     proxyProcess.stderr?.on('data', (data) => {
@@ -528,16 +839,9 @@ async function startProxy() {
     });
 
     devProxyState.process = proxyProcess;
-    if (spinnerInterval) {
-      clearInterval(spinnerInterval);
-      spinnerInterval = null;
-    }
-    devProxyState.status = 'started';
     devProxyState.port = port;
     treeDataProvider.refresh();
     updateStatusBar();
-
-    vscode.window.showInformationMessage(`Dev Proxy started on port ${port}`);
 
   } catch (error) {
     vscode.window.showErrorMessage(`Failed to start Dev Proxy: ${error}`);
@@ -561,8 +865,68 @@ async function stopProxy() {
     treeDataProvider.refresh();
   }, 80);
 
+  // Get output channel to show shutdown progress
+  const outputChannel = vscode.window.visibleTextEditors
+    .map(e => e.document)
+    .find(d => d.uri.scheme === 'output')
+    ? vscode.window.createOutputChannel('Dev Proxy')
+    : vscode.window.createOutputChannel('Dev Proxy');
+
   try {
-    killProcessTree(devProxyState.process.pid!);
+    const childProcess = devProxyState.process;
+    
+    outputChannel.appendLine('');
+    outputChannel.appendLine('='.repeat(60));
+    outputChannel.appendLine('Stopping Dev Proxy gracefully via API...');
+    
+    // Use Dev Proxy's REST API for graceful shutdown
+    // This ensures all plugins properly close files and clean up
+    try {
+      const stopUrl = `http://${devProxyState.host}:${devProxyState.apiPort}/proxy/stopproxy`;
+      outputChannel.appendLine(`Calling shutdown API: ${stopUrl}`);
+      
+      const response = await fetch(stopUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(5000)
+      });
+      
+      if (response.ok) {
+        outputChannel.appendLine('Shutdown API called successfully (202 Accepted)');
+      } else {
+        outputChannel.appendLine(`Shutdown API returned: ${response.status} ${response.statusText}`);
+      }
+    } catch (fetchError: any) {
+      outputChannel.appendLine(`Failed to call shutdown API: ${fetchError.message}`);
+      outputChannel.appendLine('Falling back to process termination...');
+    }
+    
+    // Wait for process to exit gracefully (up to 30 seconds after API call to allow HAR flush)
+    if (childProcess.pid) {
+      const exitPromise = new Promise<void>((resolve) => {
+        const exitHandler = (code: number | null) => {
+          outputChannel.appendLine(`Process exited with code: ${code ?? 'null (graceful shutdown)'}`);
+          resolve();
+        };
+        childProcess.once('exit', exitHandler);
+        
+        // Timeout after 30 seconds (increased from 15) and force kill if needed
+        setTimeout(() => {
+          childProcess.removeListener('exit', exitHandler);
+          if (childProcess.pid && childProcess.exitCode === null) {
+            outputChannel.appendLine('WARNING: Process did not exit gracefully after 30 seconds');
+            outputChannel.appendLine('Force killing process tree...');
+            killProcessTree(childProcess.pid);
+          }
+          resolve();
+        }, 30000);
+      });
+      
+      await exitPromise;
+      outputChannel.appendLine('Dev Proxy stopped successfully');
+      outputChannel.appendLine('='.repeat(60));
+    }
+    
     devProxyState.process = null;
     if (spinnerInterval) {
       clearInterval(spinnerInterval);
@@ -580,6 +944,218 @@ async function stopProxy() {
     devProxyState.status = 'stopped';
     treeDataProvider.refresh();
     vscode.window.showErrorMessage(`Failed to stop Dev Proxy: ${error}`);
+  }
+}
+
+/**
+ * Download Dev Proxy root certificate
+ */
+async function downloadCertificate() {
+  try {
+    if (devProxyState.status !== 'started') {
+      vscode.window.showWarningMessage('Dev Proxy must be running to download the certificate');
+      return;
+    }
+
+    const certUrl = `http://${devProxyState.host}:${devProxyState.apiPort}/proxy/rootCertificate?format=crt`;
+    
+    const response = await fetch(certUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to download certificate: ${response.statusText}`);
+    }
+
+    const certData = await response.arrayBuffer();
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) {
+      vscode.window.showErrorMessage('No workspace folder found');
+      return;
+    }
+
+    const certPath = path.join(workspaceFolder, 'devProxy.pem');
+    fs.writeFileSync(certPath, Buffer.from(certData));
+
+    const action = await vscode.window.showInformationMessage(
+      `Dev Proxy certificate downloaded to ${path.basename(certPath)}`,
+      'Open File',
+      'Show in Explorer',
+      'Install Instructions'
+    );
+
+    if (action === 'Open File') {
+      const doc = await vscode.workspace.openTextDocument(certPath);
+      await vscode.window.showTextDocument(doc);
+    } else if (action === 'Show in Explorer') {
+      await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(certPath));
+    } else if (action === 'Install Instructions') {
+      const os = process.platform;
+      let instructions = '';
+      
+      if (os === 'win32') {
+        instructions = `To install the certificate on Windows:
+1. Double-click devProxy.pem
+2. Click "Install Certificate..."
+3. Select "Current User" or "Local Machine"
+4. Select "Place all certificates in the following store"
+5. Click "Browse" and select "Trusted Root Certification Authorities"
+6. Click "Next" and "Finish"`;
+      } else if (os === 'darwin') {
+        instructions = `To install the certificate on macOS:
+1. Double-click devProxy.pem to open Keychain Access
+2. Enter your password when prompted
+3. Find "Dev Proxy" in the list
+4. Double-click it and expand "Trust"
+5. Set "When using this certificate" to "Always Trust"`;
+      } else {
+        instructions = `To install the certificate on Linux:
+1. Copy devProxy.pem to /usr/local/share/ca-certificates/devProxy.crt
+2. Run: sudo update-ca-certificates
+
+For Firefox:
+1. Open Preferences > Privacy & Security > Certificates
+2. Click "View Certificates" > "Authorities" > "Import"
+3. Select devProxy.pem and check "Trust this CA to identify websites"`;
+      }
+
+      const panel = vscode.window.createWebviewPanel(
+        'certInstructions',
+        'Dev Proxy Certificate Installation',
+        vscode.ViewColumn.One,
+        {}
+      );
+      
+      panel.webview.html = `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: var(--vscode-font-family); padding: 20px; line-height: 1.6; }
+    pre { background: var(--vscode-textCodeBlock-background); padding: 15px; border-radius: 5px; }
+    h2 { color: var(--vscode-foreground); }
+  </style>
+</head>
+<body>
+  <h2>Installing Dev Proxy Certificate</h2>
+  <pre>${instructions}</pre>
+  <p><strong>Note:</strong> You may need to restart your browser after installing the certificate.</p>
+</body>
+</html>`;
+    }
+  } catch (error) {
+    vscode.window.showErrorMessage(`Failed to download certificate: ${error}`);
+  }
+}
+
+/**
+ * Run tests for a specific framework with traffic recording
+ */
+async function runFrameworkTests(framework: 'playwright' | 'vitest' | 'npm' | 'pytest') {
+  try {
+    if (!devProxyState.discoveredFrameworks) {
+      vscode.window.showErrorMessage('Test frameworks not detected. Please ensure you have test configuration files in your workspace.');
+      return;
+    }
+
+    // Map framework names to actual framework names
+    const frameworkNameMap: Record<string, string> = {
+      'playwright': 'Playwright',
+      'vitest': 'Vitest',
+      'npm': 'Jest', // Try Jest first, fallback to Mocha
+      'pytest': 'pytest'
+    };
+    
+    let frameworkInfo = getFramework(devProxyState.discoveredFrameworks, frameworkNameMap[framework]);
+    
+    // For npm, try multiple frameworks
+    if (framework === 'npm' && !frameworkInfo) {
+      frameworkInfo = getFramework(devProxyState.discoveredFrameworks, 'Mocha');
+    }
+    
+    if (!frameworkInfo) {
+      vscode.window.showErrorMessage(`${frameworkNameMap[framework]} tests not detected in workspace.`);
+      return;
+    }
+
+    const config = vscode.workspace.getConfiguration('trafficRecorder');
+    const autoStart = config.get<boolean>('autoStart', false);
+
+    // Check if proxy is running
+    const portInUse = await isPortInUse(devProxyState.port, devProxyState.host);
+    
+    // Update status if mismatch detected
+    if (devProxyState.status === 'started' && !portInUse) {
+      devProxyState.status = 'stopped';
+      devProxyState.process = null;
+      treeDataProvider.refresh();
+    } else if (devProxyState.status === 'stopped' && portInUse) {
+      devProxyState.status = 'started';
+      treeDataProvider.refresh();
+    }
+
+    // Auto-start proxy if enabled and not running
+    if (autoStart && !portInUse) {
+      await startProxy();
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    // Check if proxy is running
+    if (!portInUse) {
+      const start = await vscode.window.showWarningMessage(
+        'Dev Proxy is not running. Start it now?',
+        'Start & Run Tests',
+        'Cancel'
+      );
+
+      if (start === 'Start & Run Tests') {
+        await startProxy();
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } else {
+        return;
+      }
+    }
+
+    const workingDir = frameworkInfo.workingDirectory || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workingDir) {
+      vscode.window.showErrorMessage('Could not determine working directory for tests.');
+      return;
+    }
+
+    // Create terminal with proxy environment variables
+    const proxyEnv = getProxyEnvironment();
+    const terminal = vscode.window.createTerminal({
+      name: `${frameworkInfo.name} Tests`,
+      cwd: workingDir,
+      env: proxyEnv
+    });
+
+    // Track terminal for recording status
+    devProxyState.recordingTaskTerminal = terminal;
+    
+    // Clean up terminal tracking when it closes
+    const terminalCloseListener = vscode.window.onDidCloseTerminal((closedTerminal) => {
+      if (closedTerminal === terminal) {
+        devProxyState.recordingTaskTerminal = undefined;
+        treeDataProvider.refresh();
+        terminalCloseListener.dispose();
+      }
+    });
+
+    terminal.show();
+    
+    // Send appropriate command based on framework
+    const command = frameworkInfo.command || 'npm test';
+    terminal.sendText(command);
+
+    vscode.window.showInformationMessage(
+      `Running ${frameworkInfo.name} with traffic recording...`,
+      'View Output'
+    ).then(selection => {
+      if (selection === 'View Output') {
+        const outputDir = path.join(workingDir, devProxyState.outputDir);
+        vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(outputDir));
+      }
+    });
+
+  } catch (error) {
+    vscode.window.showErrorMessage(`Failed to run ${framework} tests: ${error}`);
   }
 }
 
@@ -666,6 +1242,18 @@ async function runTests() {
     const terminal = vscode.window.createTerminal({
       name: 'Playwright Tests',
       cwd: configDir
+    });
+
+    // Track terminal for recording status
+    devProxyState.recordingTaskTerminal = terminal;
+    
+    // Clean up terminal tracking when it closes
+    const terminalCloseListener = vscode.window.onDidCloseTerminal((closedTerminal) => {
+      if (closedTerminal === terminal) {
+        devProxyState.recordingTaskTerminal = undefined;
+        treeDataProvider.refresh();
+        terminalCloseListener.dispose();
+      }
     });
 
     terminal.show();
@@ -937,6 +1525,48 @@ async function isPlaywrightInstalled(workspaceDir: string): Promise<boolean> {
 }
 
 /**
+ * Detect all available test frameworks in the workspace using the orchestrator
+ */
+async function detectTestFrameworks(): Promise<DiscoveredTestFrameworks> {
+  const orchestrator = new FrameworkDetectionOrchestrator();
+  const results = await orchestrator.detectAllFrameworks();
+  return results;
+}
+
+/**
+ * Get a specific framework from discovered frameworks by name
+ */
+function getFramework(frameworks: DiscoveredTestFrameworks, name: string): TestFrameworkInfo | undefined {
+  // Search all categories for the framework
+  for (const category of Object.values(frameworks)) {
+    if (Array.isArray(category)) {
+      const found = category.find(f => f.name.toLowerCase() === name.toLowerCase());
+      if (found) {
+        return found;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Build environment variables for test execution with HTTP proxy
+ */
+function getProxyEnvironment(): NodeJS.ProcessEnv {
+  const proxyUrl = `http://${devProxyState.host}:${devProxyState.port}`;
+  
+  return {
+    ...process.env,
+    HTTP_PROXY: proxyUrl,
+    HTTPS_PROXY: proxyUrl,
+    http_proxy: proxyUrl,
+    https_proxy: proxyUrl,
+    // For Node.js to accept Dev Proxy's self-signed certificate
+    NODE_TLS_REJECT_UNAUTHORIZED: '0'
+  };
+}
+
+/**
  * Helper: Prompt to install Playwright
  */
 async function promptInstallPlaywright(workspaceDir: string): Promise<boolean> {
@@ -998,6 +1628,29 @@ async function buildHttpRecorderPlugin(workspaceFolder: string): Promise<void> {
 /**
  * Check if a port is currently in use
  */
+/**
+ * Count the number of requests in a HAR file by counting "startedDateTime" occurrences
+ * Uses a streaming approach to avoid loading the entire file into memory
+ */
+async function countRequestsInHAR(filePath: string): Promise<number> {
+  return new Promise((resolve) => {
+    if (!fs.existsSync(filePath)) {
+      resolve(0);
+      return;
+    }
+
+    try {
+      const content = fs.readFileSync(filePath, 'utf8');
+      // Count occurrences of "startedDateTime"
+      const matches = content.match(/"startedDateTime"/g);
+      resolve(matches ? matches.length : 0);
+    } catch (error) {
+      // File might be locked or corrupted, return 0
+      resolve(0);
+    }
+  });
+}
+
 async function isPortInUse(port: number, host: string = 'localhost'): Promise<boolean> {
   return new Promise((resolve) => {
     const server = require('net').createServer();

@@ -24,7 +24,7 @@ The extension **does NOT** require system-wide proxy configuration. It only conf
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  Dev Proxy (localhost:8000)                                  │
+│  Dev Proxy (localhost:8080)                                  │
 │  ├─ HttpRecorder Plugin (records to HAR)                     │
 │  ├─ No system proxy configuration                            │
 │  └─ Self-signed certificate for HTTPS                        │
@@ -208,7 +208,7 @@ test('record API calls', async ({ page }) => {
     "configSection": "httpRecorder"
   }],
   "urlsToWatch": ["https://*", "http://*"],
-  "port": 8000,
+  "port": 8080,
   "httpRecorder": {
     "outputDirectory": "./recordings",
     "mode": "Record",
@@ -225,7 +225,7 @@ test('record API calls', async ({ page }) => {
 ```
 
 **Key Settings**:
-- `port`: Proxy port (default 8000)
+- `port`: Proxy port (default 8080)
 - `outputDirectory`: Where HAR files are saved
 - `includeBodies`: Include request/response bodies in HAR
 - `anonymizeSensitiveData`: Redact sensitive headers
@@ -238,7 +238,7 @@ export default defineConfig({
   use: {
     // Route traffic through Dev Proxy
     proxy: {
-      server: 'http://localhost:8000',
+      server: 'http://localhost:8080',
       bypass: 'localhost,127.0.0.1'
     },
     
@@ -374,7 +374,7 @@ dotnet build --configuration Debug
 **Symptoms**: Tests timeout or fail to load pages
 **Solution**:
 - Verify Dev Proxy is running: Check terminal output
-- Check proxy port: `netstat -ano | findstr :8000` (Windows)
+- Check proxy port: `netstat -ano | findstr :8080` (Windows)
 - Ensure `playwright.config.ts` has correct proxy settings
 
 #### 4. HTTPS Certificate Errors
@@ -565,7 +565,7 @@ console.log(`Average API response time: ${avgTime}ms`);
 
 | Indicator | Meaning |
 |-----------|---------|
-| ✅ Dev Proxy running | Green status bar, port 8000 listening |
+| ✅ Dev Proxy running | Green status bar, port 8080 listening |
 | ❌ Dev Proxy stopped | Red status bar, no process |
 | 🔄 Tests running | Terminal shows Playwright output |
 | 💾 HAR saved | New file in `./recordings/` |
@@ -584,6 +584,6 @@ For issues or questions:
 
 ---
 
-**Last Updated**: November 2024  
-**Version**: 0.1.0  
-**Maintainer**: maxgolov
+**Last Updated**: November 2025  
+**Version**: 0.7.0  
+**Maintainer**: Max Golovanov <max.golovanov+github@gmail.com>

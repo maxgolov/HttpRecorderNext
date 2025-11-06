@@ -1,15 +1,27 @@
 import {
-    Button,
-    Divider,
-    makeStyles,
-    Tab,
-    TabList,
-    Text,
-    tokens,
+  Button,
+  Divider,
+  makeStyles,
+  Tab,
+  TabList,
+  Text,
+  tokens,
 } from '@fluentui/react-components';
 import { Dismiss24Regular } from '@fluentui/react-icons';
 import { useState } from 'react';
+import { Light as SyntaxHighlighter } from 'react-syntax-highlighter';
+import css from 'react-syntax-highlighter/dist/esm/languages/hljs/css';
+import javascript from 'react-syntax-highlighter/dist/esm/languages/hljs/javascript';
+import json from 'react-syntax-highlighter/dist/esm/languages/hljs/json';
+import xml from 'react-syntax-highlighter/dist/esm/languages/hljs/xml';
+import { vs2015 } from 'react-syntax-highlighter/dist/esm/styles/hljs';
 import { HAREntryDisplay } from '../types';
+
+// Register languages for syntax highlighting
+SyntaxHighlighter.registerLanguage('javascript', javascript);
+SyntaxHighlighter.registerLanguage('json', json);
+SyntaxHighlighter.registerLanguage('xml', xml);
+SyntaxHighlighter.registerLanguage('css', css);
 
 const useStyles = makeStyles({
   container: {
@@ -88,6 +100,24 @@ const useStyles = makeStyles({
     overflow: 'auto',
     maxHeight: '600px',
   },
+  svgContainer: {
+    backgroundColor: tokens.colorNeutralBackground1,
+    padding: '16px',
+    borderRadius: '4px',
+    textAlign: 'center',
+    overflow: 'auto',
+    maxHeight: '600px',
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+  },
+  plainTextBlock: {
+    backgroundColor: tokens.colorNeutralBackground1,
+    padding: '12px',
+    borderRadius: '4px',
+    fontFamily: 'var(--vscode-editor-font-family, monospace)',
+    fontSize: '12px',
+    whiteSpace: 'pre',
+    overflowX: 'auto',
+  },
   timingsBar: {
     display: 'flex',
     height: '24px',
@@ -110,11 +140,23 @@ interface HARDetailsProps {
   onClose: () => void;
 }
 
-type TabValue = 'headers' | 'request' | 'response' | 'timings';
+type TabValue = 'preview' | 'headers' | 'request' | 'response' | 'timings';
 
 export function HARDetails({ entry, onClose }: HARDetailsProps) {
   const styles = useStyles();
-  const [selectedTab, setSelectedTab] = useState<TabValue>('headers');
+  
+  // Determine if content is previewable
+  const isPreviewable = 
+    entry.response.content.mimeType.startsWith('image/') ||
+    entry.response.content.mimeType.includes('javascript') ||
+    entry.response.content.mimeType.includes('json') ||
+    entry.response.content.mimeType.includes('xml') ||
+    entry.response.content.mimeType.includes('svg') ||
+    entry.response.content.mimeType.includes('html') ||
+    entry.response.content.mimeType.includes('css') ||
+    entry.response.content.mimeType.includes('text/');
+  
+  const [selectedTab, setSelectedTab] = useState<TabValue>(isPreviewable ? 'preview' : 'headers');
 
   const renderHeaders = () => (
     <div className={styles.section}>
@@ -194,6 +236,199 @@ export function HARDetails({ entry, onClose }: HARDetailsProps) {
       )}
     </div>
   );
+
+  const renderPreview = () => {
+    const mimeType = entry.response.content.mimeType.toLowerCase();
+    const isBase64 = entry.response.content.encoding === 'base64';
+    const content = entry.response.content.text || '';
+    
+    if (!content) {
+      return (
+        <div className={styles.section}>
+          <Text>No content to preview</Text>
+        </div>
+      );
+    }
+
+    // Image preview (jpeg, png, webp, gif, etc.)
+    if (mimeType.startsWith('image/') && !mimeType.includes('svg')) {
+      const imageDataUrl = isBase64 
+        ? `data:${mimeType};base64,${content}`
+        : `data:${mimeType};charset=utf-8,${encodeURIComponent(content)}`;
+      
+      return (
+        <div className={styles.section}>
+          <div className={styles.imageContainer}>
+            <img 
+              src={imageDataUrl} 
+              alt={entry.path}
+              className={styles.imagePreview}
+              onError={(e) => {
+                console.error('Failed to load image:', e);
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+            <Text size={200} style={{ marginTop: '8px', display: 'block', color: tokens.colorNeutralForeground2 }}>
+              {mimeType} • {entry.response.content.size} bytes
+            </Text>
+          </div>
+        </div>
+      );
+    }
+
+    // SVG preview (render as image and show code)
+    if (mimeType.includes('svg')) {
+      const svgContent = isBase64 ? atob(content) : content;
+      const svgDataUrl = `data:image/svg+xml;base64,${isBase64 ? content : btoa(svgContent)}`;
+      
+      return (
+        <div className={styles.section}>
+          <Text className={styles.sectionTitle}>SVG Preview</Text>
+          <div className={styles.svgContainer}>
+            <img 
+              src={svgDataUrl} 
+              alt={entry.path}
+              className={styles.imagePreview}
+              onError={(e) => {
+                console.error('Failed to load SVG:', e);
+              }}
+            />
+          </div>
+          <Divider style={{ margin: '20px 0' }} />
+          <Text className={styles.sectionTitle}>SVG Source</Text>
+          <SyntaxHighlighter 
+            language="xml" 
+            style={vs2015}
+            customStyle={{
+              borderRadius: '4px',
+              fontSize: '12px',
+              margin: 0,
+            }}
+          >
+            {svgContent}
+          </SyntaxHighlighter>
+        </div>
+      );
+    }
+
+    // JavaScript preview with syntax highlighting
+    if (mimeType.includes('javascript') || mimeType.includes('ecmascript')) {
+      const code = isBase64 ? atob(content) : content;
+      return (
+        <div className={styles.section}>
+          <Text className={styles.sectionTitle}>JavaScript Preview</Text>
+          <SyntaxHighlighter 
+            language="javascript" 
+            style={vs2015}
+            customStyle={{
+              borderRadius: '4px',
+              fontSize: '12px',
+              margin: 0,
+            }}
+            showLineNumbers
+          >
+            {code}
+          </SyntaxHighlighter>
+        </div>
+      );
+    }
+
+    // JSON preview with syntax highlighting
+    if (mimeType.includes('json')) {
+      const code = isBase64 ? atob(content) : content;
+      let formattedJson = code;
+      try {
+        formattedJson = JSON.stringify(JSON.parse(code), null, 2);
+      } catch {
+        // Use original if parsing fails
+      }
+      
+      return (
+        <div className={styles.section}>
+          <Text className={styles.sectionTitle}>JSON Preview</Text>
+          <SyntaxHighlighter 
+            language="json" 
+            style={vs2015}
+            customStyle={{
+              borderRadius: '4px',
+              fontSize: '12px',
+              margin: 0,
+            }}
+            showLineNumbers
+          >
+            {formattedJson}
+          </SyntaxHighlighter>
+        </div>
+      );
+    }
+
+    // HTML/XML preview with syntax highlighting
+    if (mimeType.includes('html') || mimeType.includes('xml')) {
+      const code = isBase64 ? atob(content) : content;
+      return (
+        <div className={styles.section}>
+          <Text className={styles.sectionTitle}>
+            {mimeType.includes('html') ? 'HTML' : 'XML'} Preview
+          </Text>
+          <SyntaxHighlighter 
+            language="xml" 
+            style={vs2015}
+            customStyle={{
+              borderRadius: '4px',
+              fontSize: '12px',
+              margin: 0,
+            }}
+            showLineNumbers
+          >
+            {code}
+          </SyntaxHighlighter>
+        </div>
+      );
+    }
+
+    // CSS preview with syntax highlighting
+    if (mimeType.includes('css')) {
+      const code = isBase64 ? atob(content) : content;
+      return (
+        <div className={styles.section}>
+          <Text className={styles.sectionTitle}>CSS Preview</Text>
+          <SyntaxHighlighter 
+            language="css" 
+            style={vs2015}
+            customStyle={{
+              borderRadius: '4px',
+              fontSize: '12px',
+              margin: 0,
+            }}
+            showLineNumbers
+          >
+            {code}
+          </SyntaxHighlighter>
+        </div>
+      );
+    }
+
+    // Plain text preview (for text/* types)
+    if (mimeType.startsWith('text/')) {
+      const text = isBase64 ? atob(content) : content;
+      return (
+        <div className={styles.section}>
+          <Text className={styles.sectionTitle}>Text Preview</Text>
+          <pre className={styles.plainTextBlock}>{text}</pre>
+        </div>
+      );
+    }
+
+    // Fallback for other types
+    return (
+      <div className={styles.section}>
+        <Text className={styles.sectionTitle}>Content Preview</Text>
+        <Text>
+          Preview not available for {mimeType}. View in Response tab.
+        </Text>
+      </div>
+    );
+  };
 
   const renderResponse = () => {
     const isImage = entry.response.content.mimeType.startsWith('image/');
@@ -338,6 +573,7 @@ export function HARDetails({ entry, onClose }: HARDetailsProps) {
           selectedValue={selectedTab}
           onTabSelect={(_, data) => setSelectedTab(data.value as TabValue)}
         >
+          {isPreviewable && <Tab value="preview">Preview</Tab>}
           <Tab value="headers">Headers</Tab>
           <Tab value="request">Request</Tab>
           <Tab value="response">Response</Tab>
@@ -345,6 +581,7 @@ export function HARDetails({ entry, onClose }: HARDetailsProps) {
         </TabList>
       </div>
       <div className={styles.content}>
+        {selectedTab === 'preview' && renderPreview()}
         {selectedTab === 'headers' && renderHeaders()}
         {selectedTab === 'request' && renderRequest()}
         {selectedTab === 'response' && renderResponse()}

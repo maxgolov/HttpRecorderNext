@@ -29,7 +29,10 @@ async function main() {
       launchArgs: [
         testWorkspace,
         '--disable-extensions', // Disable other extensions
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-dev-shm-usage',
+        '--disable-software-rasterizer',
+        '--no-sandbox'
       ]
     });
   } catch (err) {

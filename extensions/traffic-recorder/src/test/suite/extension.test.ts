@@ -14,12 +14,12 @@ suite('Traffic Recorder Extension Test Suite', () => {
 
   suite('Extension Activation', () => {
     test('Extension should be present', () => {
-      const extension = vscode.extensions.getExtension('maxgolov.traffic-recorder');
+      const extension = vscode.extensions.getExtension('maxgolov.traffic-cop');
       assert.ok(extension, 'Extension should be installed');
     });
 
     test('Extension should activate', async () => {
-      const extension = vscode.extensions.getExtension('maxgolov.traffic-recorder');
+      const extension = vscode.extensions.getExtension('maxgolov.traffic-cop');
       assert.ok(extension, 'Extension not found');
       
       await extension!.activate();
@@ -65,7 +65,7 @@ suite('Traffic Recorder Extension Test Suite', () => {
     test('Should have default port configuration', () => {
       const config = vscode.workspace.getConfiguration('trafficRecorder');
       const port = config.get<number>('devProxyPort');
-      assert.strictEqual(port, 8000, 'Default port should be 8000');
+      assert.strictEqual(port, 8080, 'Default port should be 8080');
     });
 
     test('Should have default output directory', () => {

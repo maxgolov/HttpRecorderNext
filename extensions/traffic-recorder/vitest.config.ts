@@ -1,3 +1,4 @@
+import path from 'path';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -18,5 +19,12 @@ export default defineConfig({
     },
     testTimeout: 30000,
     hookTimeout: 30000
+  },
+  resolve: {
+    alias: {
+      '@mcp': path.resolve(__dirname, './src/mcp'),
+      '@detectors': path.resolve(__dirname, './src/detectors'),
+      '@test': path.resolve(__dirname, './src/test')
+    }
   }
 });

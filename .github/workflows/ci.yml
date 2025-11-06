@@ -1,0 +1,210 @@
+name: CI - Build & Test
+
+# Trigger on all PRs and pushes to master
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+# Use Ubuntu for faster builds and better parallelization
+jobs:
+  build-dotnet:
+    name: Build .NET Libraries
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      
+      - name: Restore dependencies
+        run: dotnet restore
+      
+      - name: Build HttpRecorder
+        run: dotnet build HttpRecorder/HttpRecorder.csproj --configuration Release --no-restore
+      
+      - name: Build HttpRecorder.DevProxy
+        run: dotnet build DevProxyExtension/HttpRecorder.DevProxy/HttpRecorder.DevProxy.csproj --configuration Release --no-restore
+      
+      - name: Run .NET tests
+        run: dotnet test HttpRecorder.Tests/HttpRecorder.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
+      
+      - name: Publish test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: .NET Tests
+          path: '**/test-results.trx'
+          reporter: dotnet-trx
+      
+      - name: Upload .NET artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-build
+          path: |
+            DevProxyExtension/HttpRecorder.DevProxy/bin/Release/net9.0/HttpRecorder.DevProxy.dll
+            HttpRecorder/bin/Release/net9.0/HttpRecorder.dll
+          retention-days: 1
+
+  build-extension:
+    name: Build VS Code Extension
+    runs-on: ubuntu-latest
+    needs: build-dotnet
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js (Latest LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+          cache-dependency-path: extensions/traffic-recorder/package-lock.json
+      
+      - name: Download .NET artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dotnet-build
+          path: dotnet-artifacts
+      
+      - name: Copy plugins to extension
+        run: |
+          mkdir -p extensions/traffic-recorder/plugins
+          cp dotnet-artifacts/DevProxyExtension/HttpRecorder.DevProxy/bin/Release/net9.0/HttpRecorder.DevProxy.dll extensions/traffic-recorder/plugins/
+          cp dotnet-artifacts/HttpRecorder/bin/Release/net9.0/HttpRecorder.dll extensions/traffic-recorder/plugins/
+      
+      - name: Install dependencies
+        working-directory: extensions/traffic-recorder
+        run: npm ci
+      
+      - name: Build extension
+        working-directory: extensions/traffic-recorder
+        run: npm run build
+      
+      - name: Run extension tests
+        working-directory: extensions/traffic-recorder
+        run: xvfb-run -a npm test
+      
+      - name: Package extension
+        working-directory: extensions/traffic-recorder
+        run: npx @vscode/vsce package --out traffic-cop.vsix
+      
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-extension
+          path: extensions/traffic-recorder/traffic-cop.vsix
+          retention-days: 7
+
+  test-cross-platform:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    needs: build-extension
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js (Latest LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      
+      - name: Download extension
+        uses: actions/download-artifact@v4
+        with:
+          name: vscode-extension
+          path: ./artifacts
+      
+      - name: Install extension (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vsix = Get-ChildItem -Path ./artifacts -Filter *.vsix | Select-Object -First 1
+          code --install-extension $vsix.FullName --force
+      
+      - name: Install extension (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          vsix=$(find ./artifacts -name "*.vsix" | head -n 1)
+          code --install-extension "$vsix" --force
+      
+      - name: Verify installation
+        shell: bash
+        run: |
+          if code --list-extensions | grep -q "maxgolov.traffic-cop"; then
+            echo "✅ Extension installed successfully"
+          else
+            echo "❌ Extension installation failed"
+            exit 1
+          fi
+
+  lint:
+    name: Lint & Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js (Latest LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+          cache-dependency-path: extensions/traffic-recorder/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: extensions/traffic-recorder
+        run: npm ci
+      
+      - name: Run ESLint
+        working-directory: extensions/traffic-recorder
+        run: npm run lint
+      
+      - name: Check TypeScript compilation
+        working-directory: extensions/traffic-recorder
+        run: npx tsc --noEmit
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Run npm audit
+        working-directory: extensions/traffic-recorder
+        run: npm audit --production --audit-level=high
+        continue-on-error: true
+      
+      - name: CodeQL Analysis
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript, csharp
+      
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+      
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3

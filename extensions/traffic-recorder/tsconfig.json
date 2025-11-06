@@ -19,7 +19,13 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "allowSyntheticDefaultImports": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "baseUrl": ".",
+    "paths": {
+      "@mcp/*": ["src/mcp/*"],
+      "@detectors/*": ["src/detectors/*"],
+      "@test/*": ["tests/*"]
+    }
   },
   "include": [
     "src/**/*"
@@ -28,6 +34,7 @@
     "node_modules",
     "dist",
     "tests",
-    "**/*.spec.ts"
+    "**/*.spec.ts",
+    "src/test/workspaces"
   ]
 }
