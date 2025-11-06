@@ -45,6 +45,7 @@ interface DevProxyState {
 const BRAILLE_SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 let spinnerInterval: NodeJS.Timeout | null = null;
 let spinnerIndex = 0;
+let statusCheckInterval: NodeJS.Timeout | null = null; // Periodic API status checker
 
 let devProxyState: DevProxyState = {
   process: null,
@@ -456,6 +457,10 @@ export function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(treeView);
 
+  // Start periodic status checker to detect external Dev Proxy instances
+  startStatusChecker();
+  context.subscriptions.push({ dispose: stopStatusChecker });
+
   // Periodic status refresh when proxy is running (every 5 seconds)
   const statusRefreshInterval = setInterval(() => {
     if (devProxyState.status === 'started') {
@@ -589,6 +594,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(statusBarItem);
 
   // Update status bar when proxy state changes
+  // Update status bar when proxy state changes
   const updateStatusBar = () => {
     if (devProxyState.status === 'started') {
       statusBarItem.text = '$(debug-stop) Dev Proxy (Running)';
@@ -611,6 +617,7 @@ export function activate(context: vscode.ExtensionContext) {
       statusBarItem.tooltip = 'Start Dev Proxy';
       statusBarItem.backgroundColor = undefined;
     }
+    // Refresh tree view to update the explorer panel
     treeDataProvider.refresh();
   };
 
@@ -630,9 +637,161 @@ export function activate(context: vscode.ExtensionContext) {
  * Extension deactivation
  */
 export function deactivate() {
+  // Stop the periodic status checker
+  stopStatusChecker();
+  
+  // Clean up spinner intervals
+  if (spinnerInterval) {
+    clearInterval(spinnerInterval);
+    spinnerInterval = null;
+  }
+  
+  // Kill Dev Proxy process if we spawned it
   if (devProxyState.process) {
     killProcessTree(devProxyState.process.pid!);
   }
+}
+
+/**
+ * Check if a port is currently in use by attempting to connect to it
+ */
+async function isPortInUse(port: number, host: string): Promise<boolean> {
+  try {
+    await fetch(`http://${host}:${port}/proxy`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(1000)
+    });
+    // If we get a response (any response), the port is in use
+    return true;
+  } catch (error: any) {
+    // Connection refused or timeout means port is available
+    return false;
+  }
+}
+
+/**
+ * Periodic status checker - runs every 5 seconds to detect external Dev Proxy instances
+ */
+async function checkDevProxyStatus() {
+  try {
+    const config = vscode.workspace.getConfiguration('trafficRecorder');
+    const host = config.get<string>('devProxyHost', 'localhost');
+    const apiPort = 8897;
+    
+    const response = await fetch(`http://${host}:${apiPort}/proxy`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(2000)
+    });
+    
+    if (response.ok) {
+      // Dev Proxy is running
+      if (devProxyState.status === 'stopped') {
+        // External instance detected - adopt it
+        devProxyState.status = 'started';
+        devProxyState.host = host;
+        devProxyState.apiPort = apiPort;
+        devProxyState.process = null; // External instance
+        
+        const apiInfo = await response.json() as ProxyApiInfo;
+        devProxyState.apiInfo = apiInfo;
+        
+        treeDataProvider.refresh();
+        updateStatusBar();
+      } else if (devProxyState.status === 'started') {
+        // Update API info
+        const apiInfo = await response.json() as ProxyApiInfo;
+        devProxyState.apiInfo = apiInfo;
+        treeDataProvider.refresh();
+      }
+    } else {
+      // API returned error response
+      if (devProxyState.status === 'started' && !devProxyState.process) {
+        // External instance stopped
+        devProxyState.status = 'stopped';
+        treeDataProvider.refresh();
+        updateStatusBar();
+      }
+    }
+  } catch (error: any) {
+    // API not reachable
+    if (devProxyState.status === 'started' && !devProxyState.process) {
+      // External instance stopped
+      devProxyState.status = 'stopped';
+      treeDataProvider.refresh();
+      updateStatusBar();
+    }
+  }
+}
+
+/**
+ * Start the periodic status checker
+ */
+function startStatusChecker() {
+  if (!statusCheckInterval) {
+    // Check immediately
+    checkDevProxyStatus();
+    // Then check every 5 seconds
+    statusCheckInterval = setInterval(checkDevProxyStatus, 5000);
+  }
+}
+
+/**
+ * Stop the periodic status checker
+ */
+function stopStatusChecker() {
+  if (statusCheckInterval) {
+    clearInterval(statusCheckInterval);
+    statusCheckInterval = null;
+  }
+}
+
+/**
+ * Mark proxy as started: clear spinner, set state, refresh UI, fetch initial API info
+ */
+function markProxyStarted() {
+  if (spinnerInterval) {
+    clearInterval(spinnerInterval);
+    spinnerInterval = null;
+  }
+  devProxyState.status = 'started';
+  treeDataProvider.refresh();
+  updateStatusBar();
+
+  // Fetch initial API status shortly after start
+  setTimeout(async () => {
+    try {
+      const response = await fetch(`http://${devProxyState.host}:${devProxyState.apiPort}/proxy`);
+      if (response.ok) {
+        const apiInfo = await response.json() as ProxyApiInfo;
+        devProxyState.apiInfo = apiInfo;
+        treeDataProvider.refresh();
+      }
+    } catch {
+      // Ignore; periodic checker will update later
+    }
+  }, 1000);
+}
+
+/**
+ * Wait until Dev Proxy API responds OK or timeout expires
+ */
+async function waitForDevProxyReady(host: string, apiPort: number, timeoutMs = 10000, intervalMs = 250): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), Math.min(intervalMs, 2000));
+      const res = await fetch(`http://${host}:${apiPort}/proxy`, { signal: controller.signal });
+      clearTimeout(timer);
+      if (res.ok) {
+        return true;
+      }
+    } catch {
+      // Not ready yet
+    }
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  return false;
 }
 
 /**
@@ -664,9 +823,7 @@ async function showDevProxyInstallationGuide(useBeta: boolean) {
       await installDevProxy();
     } else if (action === 'Check Again') {
       const isNowInstalled = await isDevProxyInstalled();
-      if (isNowInstalled) {
-        vscode.window.showInformationMessage('Dev Proxy is now detected! You can try starting it again.');
-      } else {
+      if (!isNowInstalled) {
         vscode.window.showWarningMessage(
           'Dev Proxy is still not detected. Please follow the installation guide and restart VS Code after installation.'
         );
@@ -699,27 +856,53 @@ async function startProxy() {
     return;
   }
 
+  // Get configuration first
+  const config = vscode.workspace.getConfiguration('trafficRecorder');
+  const host = config.get<string>('devProxyHost', 'localhost');
+  const port = config.get<number>('devProxyPort', 8080);
+  const apiPort = 8897;
+  const outputDir = config.get<string>('outputDirectory', '.http-recorder');
+  const useBeta = config.get<boolean>('useBetaVersion', true);
+  const useLocalPlugin = config.get<boolean>('useLocalPlugin', false);
+  const asSystemProxy = config.get<boolean>('asSystemProxy', false);
+
+  // PRE-FLIGHT CHECK: Is Dev Proxy already running?
+  try {
+    const response = await fetch(`http://${host}:${apiPort}/proxy`, { signal: AbortSignal.timeout(1000) });
+    if (response.ok) {
+      // Dev Proxy is already running externally!
+      devProxyState.status = 'started';
+      devProxyState.host = host;
+      devProxyState.port = port;
+      devProxyState.apiPort = apiPort;
+      devProxyState.outputDir = outputDir;
+      devProxyState.useBeta = useBeta;
+      devProxyState.process = null; // Not our process
+      const apiInfo = await response.json() as ProxyApiInfo;
+      devProxyState.apiInfo = apiInfo;
+      treeDataProvider.refresh();
+      updateStatusBar();
+      return;
+    }
+  } catch {
+    // Good - API not reachable, we can start
+  }
+
   // Set status to starting and start spinner animation
   devProxyState.status = 'starting';
   treeDataProvider.refresh();
+  // Update status bar and view immediately to reflect starting state
+  updateStatusBar();
   spinnerInterval = setInterval(() => {
     spinnerIndex = (spinnerIndex + 1) % BRAILLE_SPINNER.length;
     treeDataProvider.refresh();
   }, 80);
 
   try {
-    // Get configuration
-    const config = vscode.workspace.getConfiguration('trafficRecorder');
-    const host = config.get<string>('devProxyHost', 'localhost');
-    const port = config.get<number>('devProxyPort', 8080);
-    const outputDir = config.get<string>('outputDirectory', '.http-recorder');
-    const useBeta = config.get<boolean>('useBetaVersion', true);
-    const useLocalPlugin = config.get<boolean>('useLocalPlugin', false);
-    const asSystemProxy = config.get<boolean>('asSystemProxy', false);
-
     // Update state
     devProxyState.host = host;
     devProxyState.port = port;
+    devProxyState.apiPort = apiPort;
     devProxyState.outputDir = outputDir;
     devProxyState.useBeta = useBeta;
     devProxyState.startTime = new Date();
@@ -848,35 +1031,9 @@ async function startProxy() {
       env: spawnEnv // Use augmented environment with Dev Proxy paths
     });
 
-    // Handle process output
+    // Handle process output - just log it, don't parse
     proxyProcess.stdout?.on('data', (data) => {
-      const output = data.toString();
-      outputChannel.append(output);
-      
-      // Detect when Dev Proxy is actually listening
-      if (output.includes('Dev Proxy listening on') && devProxyState.status === 'starting') {
-        if (spinnerInterval) {
-          clearInterval(spinnerInterval);
-          spinnerInterval = null;
-        }
-        devProxyState.status = 'started';
-        treeDataProvider.refresh();
-        updateStatusBar();
-        
-        // Fetch initial API status
-        setTimeout(async () => {
-          try {
-            const response = await fetch(`http://${devProxyState.host}:${devProxyState.apiPort}/proxy`);
-            if (response.ok) {
-              const apiInfo = await response.json() as ProxyApiInfo;
-              devProxyState.apiInfo = apiInfo;
-              treeDataProvider.refresh();
-            }
-          } catch (error) {
-            // Silently fail - status will be checked on next interval
-          }
-        }, 1000);
-      }
+      outputChannel.append(data.toString());
     });
 
     proxyProcess.stderr?.on('data', (data) => {
@@ -917,6 +1074,26 @@ async function startProxy() {
     treeDataProvider.refresh();
     updateStatusBar();
 
+    // Poll the Dev Proxy API until it's ready, then mark as started
+    // This is the ONLY way we determine if proxy is running
+    (async () => {
+      try {
+        outputChannel.appendLine('Waiting for Dev Proxy API to become ready...');
+        const ready = await waitForDevProxyReady(devProxyState.host, devProxyState.apiPort, 15000, 300);
+        outputChannel.appendLine(`API ready check result: ${ready}, current status: ${devProxyState.status}`);
+        if (ready && devProxyState.status === 'starting') {
+          outputChannel.appendLine('Marking proxy as started');
+          markProxyStarted();
+        } else if (!ready) {
+          outputChannel.appendLine('WARNING: Dev Proxy API did not respond within 15 seconds');
+        } else if (devProxyState.status !== 'starting') {
+          outputChannel.appendLine(`WARNING: Status changed to ${devProxyState.status} before API was ready`);
+        }
+      } catch (err) {
+        outputChannel.appendLine(`ERROR in API polling: ${err}`);
+      }
+    })();
+
   } catch (error) {
     vscode.window.showErrorMessage(`Failed to start Dev Proxy: ${error}`);
   }
@@ -926,7 +1103,7 @@ async function startProxy() {
  * Stop Dev Proxy command
  */
 async function stopProxy() {
-  if (devProxyState.status !== 'started' || !devProxyState.process) {
+  if (devProxyState.status !== 'started') {
     vscode.window.showWarningMessage('Dev Proxy is not running');
     return;
   }
@@ -934,27 +1111,23 @@ async function stopProxy() {
   // Set status to stopping and start spinner animation
   devProxyState.status = 'stopping';
   treeDataProvider.refresh();
+  updateStatusBar();
   spinnerInterval = setInterval(() => {
     spinnerIndex = (spinnerIndex + 1) % BRAILLE_SPINNER.length;
     treeDataProvider.refresh();
   }, 80);
 
-  // Get output channel to show shutdown progress
-  const outputChannel = vscode.window.visibleTextEditors
-    .map(e => e.document)
-    .find(d => d.uri.scheme === 'output')
-    ? vscode.window.createOutputChannel('Dev Proxy')
-    : vscode.window.createOutputChannel('Dev Proxy');
+  // Create output channel to show shutdown progress
+  const outputChannel = vscode.window.createOutputChannel('Dev Proxy');
+  outputChannel.show();
 
   try {
-    const childProcess = devProxyState.process;
-    
     outputChannel.appendLine('');
     outputChannel.appendLine('='.repeat(60));
     outputChannel.appendLine('Stopping Dev Proxy gracefully via API...');
     
-    // Use Dev Proxy's REST API for graceful shutdown
-    // This ensures all plugins properly close files and clean up
+    // Always use Dev Proxy's REST API for graceful shutdown
+    // This works for both our spawned processes and external instances
     try {
       const stopUrl = `http://${devProxyState.host}:${devProxyState.apiPort}/proxy/stopproxy`;
       outputChannel.appendLine(`Calling shutdown API: ${stopUrl}`);
@@ -972,11 +1145,15 @@ async function stopProxy() {
       }
     } catch (fetchError: any) {
       outputChannel.appendLine(`Failed to call shutdown API: ${fetchError.message}`);
-      outputChannel.appendLine('Falling back to process termination...');
+      // If we have a child process, kill it
+      if (devProxyState.process) {
+        outputChannel.appendLine('Falling back to process termination...');
+      }
     }
     
     // Wait for process to exit gracefully (up to 30 seconds after API call to allow HAR flush)
-    if (childProcess.pid) {
+    if (devProxyState.process && devProxyState.process.pid) {
+      const childProcess = devProxyState.process;
       const exitPromise = new Promise<void>((resolve) => {
         const exitHandler = (code: number | null) => {
           outputChannel.appendLine(`Process exited with code: ${code ?? 'null (graceful shutdown)'}`);
@@ -984,7 +1161,7 @@ async function stopProxy() {
         };
         childProcess.once('exit', exitHandler);
         
-        // Timeout after 30 seconds (increased from 15) and force kill if needed
+        // Timeout after 30 seconds and force kill if needed
         setTimeout(() => {
           childProcess.removeListener('exit', exitHandler);
           if (childProcess.pid && childProcess.exitCode === null) {
@@ -997,9 +1174,14 @@ async function stopProxy() {
       });
       
       await exitPromise;
-      outputChannel.appendLine('Dev Proxy stopped successfully');
-      outputChannel.appendLine('='.repeat(60));
+    } else {
+      // External instance - wait a bit for it to shut down
+      outputChannel.appendLine('Waiting for external Dev Proxy instance to shut down...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
+    
+    outputChannel.appendLine('Dev Proxy stopped successfully');
+    outputChannel.appendLine('='.repeat(60));
     
     devProxyState.process = null;
     if (spinnerInterval) {
@@ -1009,14 +1191,15 @@ async function stopProxy() {
     devProxyState.status = 'stopped';
     treeDataProvider.refresh();
     updateStatusBar();
-    vscode.window.showInformationMessage('Dev Proxy stopped');
   } catch (error) {
     if (spinnerInterval) {
       clearInterval(spinnerInterval);
       spinnerInterval = null;
     }
     devProxyState.status = 'stopped';
+    devProxyState.process = null;
     treeDataProvider.refresh();
+    updateStatusBar();
     vscode.window.showErrorMessage(`Failed to stop Dev Proxy: ${error}`);
   }
 }
@@ -1867,27 +2050,6 @@ async function countRequestsInHAR(filePath: string): Promise<number> {
   });
 }
 
-async function isPortInUse(port: number, host: string = 'localhost'): Promise<boolean> {
-  return new Promise((resolve) => {
-    const server = require('net').createServer();
-    
-    server.once('error', (err: NodeJS.ErrnoException) => {
-      if (err.code === 'EADDRINUSE') {
-        resolve(true);
-      } else {
-        resolve(false);
-      }
-    });
-    
-    server.once('listening', () => {
-      server.close();
-      resolve(false);
-    });
-    
-    server.listen(port, host);
-  });
-}
-
 /**
  * Helper: Get workspace folder
  */
@@ -1960,5 +2122,7 @@ function killProcessTree(pid: number) {
  * Helper: Update status bar (referenced from activate)
  */
 function updateStatusBar() {
-  // This will be overridden in activate()
+  // This stub is called from module-level functions
+  // The tree view refresh happens here since status changes should update the UI
+  treeDataProvider.refresh();
 }
