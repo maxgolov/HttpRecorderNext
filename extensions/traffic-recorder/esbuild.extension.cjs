@@ -27,13 +27,18 @@ async function main() {
   const ctx = await esbuild.context({
     entryPoints: ['src/extension.ts'],
     bundle: true,
-    format: 'esm',
+    format: 'cjs',  // Changed to CommonJS for VS Code extension
     minify: production,
     sourcemap: !production,
     sourcesContent: false,
     platform: 'node',
     outfile: 'dist/extension.js',
-    external: ['vscode'],  // Don't bundle VS Code API
+    external: [
+      'vscode',  // VS Code API
+      // Node.js built-in modules
+      'fs', 'path', 'child_process', 'util', 'net', 'tls', 'crypto', 
+      'http', 'https', 'stream', 'events', 'url', 'os', 'assert'
+    ],
     logLevel: 'silent',
     plugins: [
       esbuildProblemMatcherPlugin,
