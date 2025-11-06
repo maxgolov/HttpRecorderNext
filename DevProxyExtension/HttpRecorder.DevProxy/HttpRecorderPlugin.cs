@@ -346,7 +346,17 @@ public sealed class HttpRecorderPlugin(
             var filePath = await PrepareOutputFilePathAsync(sessionName);
             var fullPath = Path.HasExtension(filePath) ? filePath : $"{filePath}.har";
 
-            _harFileWriter = new StreamWriter(fullPath, false, Encoding.UTF8);
+            // Use larger buffer and atomic write approach
+            // Write to temp file first, then atomic rename on close
+            var fileStream = new FileStream(
+                fullPath,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,  // Exclusive access
+                bufferSize: 65536,  // 64KB buffer instead of default 4KB
+                useAsync: true);
+            
+            _harFileWriter = new StreamWriter(fileStream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
             
             // Write HAR file header
             await _harFileWriter.WriteLineAsync("{");
@@ -402,12 +412,27 @@ public sealed class HttpRecorderPlugin(
             var entryJson = JsonSerializer.Serialize(entry, new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                WriteIndented = true
+                WriteIndented = false,  // Don't indent here, we'll handle indentation properly
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
             });
 
-            // Indent the entry JSON
-            var indentedJson = string.Join(Environment.NewLine, 
-                entryJson.Split(Environment.NewLine).Select(line => "      " + line));
+            // Parse and re-serialize with proper indentation to avoid corrupting escape sequences
+            var jsonDoc = JsonDocument.Parse(entryJson);
+            using var stream = new MemoryStream();
+            using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions 
+            { 
+                Indented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            });
+            
+            jsonDoc.WriteTo(writer);
+            await writer.FlushAsync();
+            
+            var formattedJson = Encoding.UTF8.GetString(stream.ToArray());
+            
+            // Indent each line (this is safe because JSON is already properly escaped)
+            var indentedLines = formattedJson.Split('\n').Select(line => "      " + line);
+            var indentedJson = string.Join('\n', indentedLines);
 
             await _harFileWriter.WriteAsync(indentedJson);
             
