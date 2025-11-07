@@ -13,7 +13,7 @@ on:
 jobs:
   build-and-release:
     name: Build and Release
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     
     steps:
       - name: Checkout repository
@@ -25,8 +25,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: extensions/traffic-recorder/package-lock.json
       
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -36,7 +34,7 @@ jobs:
       - name: Install extension dependencies
         run: |
           cd extensions/traffic-recorder
-          npm ci
+          npm install
       
       - name: Build HttpRecorder.DevProxy plugin
         run: |
