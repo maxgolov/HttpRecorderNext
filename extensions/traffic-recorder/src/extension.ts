@@ -657,7 +657,9 @@ export function deactivate() {
  */
 async function isPortInUse(port: number, host: string): Promise<boolean> {
   try {
-    await fetch(`http://${host}:${port}/proxy`, {
+    // Always use 127.0.0.1 instead of hostname to bypass proxy interception
+    const apiHost = host === 'localhost' ? '127.0.0.1' : host;
+    await fetch(`http://${apiHost}:${port}/proxy`, {
       method: 'GET',
       signal: AbortSignal.timeout(1000)
     });
@@ -678,7 +680,10 @@ async function checkDevProxyStatus() {
     const host = config.get<string>('devProxyHost', 'localhost');
     const apiPort = 8897;
     
-    const response = await fetch(`http://${host}:${apiPort}/proxy`, {
+    // Always use 127.0.0.1 instead of hostname to bypass proxy interception
+    const apiHost = host === 'localhost' ? '127.0.0.1' : host;
+    
+    const response = await fetch(`http://${apiHost}:${apiPort}/proxy`, {
       method: 'GET',
       signal: AbortSignal.timeout(2000)
     });
@@ -777,11 +782,13 @@ function markProxyStarted() {
  */
 async function waitForDevProxyReady(host: string, apiPort: number, timeoutMs = 10000, intervalMs = 250): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
+  // Always use 127.0.0.1 instead of hostname to bypass proxy interception
+  const apiHost = host === 'localhost' ? '127.0.0.1' : host;
   while (Date.now() < deadline) {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), Math.min(intervalMs, 2000));
-      const res = await fetch(`http://${host}:${apiPort}/proxy`, { signal: controller.signal });
+      const res = await fetch(`http://${apiHost}:${apiPort}/proxy`, { signal: controller.signal });
       clearTimeout(timer);
       if (res.ok) {
         return true;
@@ -868,7 +875,9 @@ async function startProxy() {
 
   // PRE-FLIGHT CHECK: Is Dev Proxy already running?
   try {
-    const response = await fetch(`http://${host}:${apiPort}/proxy`, { signal: AbortSignal.timeout(1000) });
+    // Always use 127.0.0.1 instead of hostname to bypass proxy interception
+    const apiHost = host === 'localhost' ? '127.0.0.1' : host;
+    const response = await fetch(`http://${apiHost}:${apiPort}/proxy`, { signal: AbortSignal.timeout(1000) });
     if (response.ok) {
       // Dev Proxy is already running externally!
       devProxyState.status = 'started';
@@ -1334,8 +1343,9 @@ async function runFrameworkTests(framework: 'playwright' | 'vitest' | 'npm' | 'p
     const config = vscode.workspace.getConfiguration('trafficRecorder');
     const autoStart = config.get<boolean>('autoStart', false);
 
-    // Check if proxy is running
-    const portInUse = await isPortInUse(devProxyState.port, devProxyState.host);
+    // Check if proxy is running via API port
+    const apiPort = 8897;
+    const portInUse = await isPortInUse(apiPort, devProxyState.host);
     
     // Update status if mismatch detected
     if (devProxyState.status === 'started' && !portInUse) {
@@ -1424,8 +1434,9 @@ async function runTests() {
     const config = vscode.workspace.getConfiguration('trafficRecorder');
     const autoStart = config.get<boolean>('autoStart', false);
 
-    // Check if proxy is actually running on the port
-    const portInUse = await isPortInUse(devProxyState.port, devProxyState.host);
+    // Check if proxy is actually running via API port
+    const apiPort = 8897;
+    const portInUse = await isPortInUse(apiPort, devProxyState.host);
     
     // Update status if mismatch detected
     if (devProxyState.status === 'started' && !portInUse) {

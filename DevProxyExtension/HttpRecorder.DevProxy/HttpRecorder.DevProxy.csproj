@@ -8,8 +8,8 @@
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <!-- Package metadata -->
     <PackageId>HttpRecorder.DevProxy</PackageId>
-    <Version>0.7.5</Version>
-    <Authors>Max Golovanov</Authors>
+    <Version>0.7.6</Version>
+    <Authors>MaxGolovanov</Authors>
     <Company>Max Golovanov</Company>
     <Description>Dev Proxy plugin for recording HTTP traffic to HAR files using HttpRecorder library. Features streaming HAR file writes with real-time flush and session-based recording. All traffic accumulated in a single HAR file per session.</Description>
     <PackageTags>devproxy;plugin;har;http;recording;testing;proxy</PackageTags>
