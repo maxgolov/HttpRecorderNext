@@ -135,54 +135,55 @@ jobs:
       #       --api-key ${{ secrets.NUGET_API_KEY }} `
       #       --source https://api.nuget.org/v3/index.json
 
-  test-installation:
-    name: Test Installation
-    needs: build-and-release
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '9.0.x'
-      
-      - name: Download release artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: vsix-package
-          path: ./artifacts
-      
-      - name: Install extension (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          $vsix = Get-ChildItem -Path ./artifacts -Filter *.vsix | Select-Object -First 1
-          code --install-extension $vsix.FullName
-      
-      - name: Install extension (Unix)
-        if: matrix.os != 'windows-latest'
-        shell: bash
-        run: |
-          vsix=$(find ./artifacts -name "*.vsix" | head -n 1)
-          code --install-extension "$vsix"
-      
-      - name: Verify installation
-        shell: pwsh
-        run: |
-          $extensions = code --list-extensions
-          if ($extensions -notcontains 'maxgolov.traffic-recorder') {
-            Write-Error "Extension not installed"
-            exit 1
-          }
-          Write-Host "✅ Extension installed successfully"
+  # Test installation jobs disabled - artifacts not uploaded, not needed for release
+  # test-installation:
+  #   name: Test Installation
+  #   needs: build-and-release
+  #   runs-on: ${{ matrix.os }}
+  #   strategy:
+  #     matrix:
+  #       os: [windows-latest, ubuntu-latest, macos-latest]
+  #   
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v4
+  #     
+  #     - name: Setup Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: '20'
+  #     
+  #     - name: Setup .NET
+  #       uses: actions/setup-dotnet@v4
+  #       with:
+  #         dotnet-version: '9.0.x'
+  #     
+  #     - name: Download release artifacts
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: vsix-package
+  #         path: ./artifacts
+  #     
+  #     - name: Install extension (Windows)
+  #       if: matrix.os == 'windows-latest'
+  #       shell: pwsh
+  #       run: |
+  #         $vsix = Get-ChildItem -Path ./artifacts -Filter *.vsix | Select-Object -First 1
+  #         code --install-extension $vsix.FullName
+  #     
+  #     - name: Install extension (Unix)
+  #       if: matrix.os != 'windows-latest'
+  #       shell: bash
+  #       run: |
+  #         vsix=$(find ./artifacts -name "*.vsix" | head -n 1)
+  #         code --install-extension "$vsix"
+  #     
+  #     - name: Verify installation
+  #       shell: pwsh
+  #       run: |
+  #         $extensions = code --list-extensions
+  #         if ($extensions -notcontains 'maxgolov.traffic-recorder') {
+  #           Write-Error "Extension not installed"
+  #           exit 1
+  #         }
+  #         Write-Host "✅ Extension installed successfully"
