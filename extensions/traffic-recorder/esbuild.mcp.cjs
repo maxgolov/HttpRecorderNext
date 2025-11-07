@@ -27,7 +27,7 @@ async function main() {
   const ctx = await esbuild.context({
     entryPoints: ['src/mcp/server.ts'],
     bundle: true,
-    format: 'esm',
+    format: 'cjs',
     minify: production,
     sourcemap: !production,
     sourcesContent: false,

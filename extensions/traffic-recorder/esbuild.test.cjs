@@ -27,16 +27,21 @@ async function main() {
   await runnerCtx.rebuild();
   await runnerCtx.dispose();
 
-  // Build the test suite
+  // Build the test suite - all test files need to be separate entry points
+  // since they are discovered at runtime by glob
+  const glob = require('glob');
+  const testFiles = glob.sync('src/test/suite/**/*.test.ts');
+  
   const suiteCtx = await esbuild.context({
-    entryPoints: ['src/test/suite/index.ts'],
-    bundle: true,
+    entryPoints: ['src/test/suite/index.ts', ...testFiles],
+    bundle: true, // Bundle each test file with its dependencies
     format: 'cjs',
     minify: production,
     sourcemap: !production,
     sourcesContent: false,
     platform: 'node',
-    outfile: 'dist/test/suite/index.js',
+    outdir: 'dist/test/suite',
+    outbase: 'src/test/suite',
     external: [
       'vscode',
       'mocha',
