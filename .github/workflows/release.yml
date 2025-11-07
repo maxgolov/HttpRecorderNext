@@ -35,6 +35,8 @@ jobs:
         run: |
           cd extensions/traffic-recorder
           npm install
+          cd har-viewer
+          npm install
       
       - name: Build HttpRecorder.DevProxy plugin
         run: |
