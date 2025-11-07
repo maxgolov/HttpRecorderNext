@@ -77,9 +77,9 @@ jobs:
       
       - name: Create NuGet package
         run: |
-          dotnet pack DevProxyExtension/HttpRecorder.DevProxy/HttpRecorder.DevProxy.csproj `
-            --configuration Release `
-            --output ./artifacts `
+          dotnet pack DevProxyExtension/HttpRecorder.DevProxy/HttpRecorder.DevProxy.csproj \
+            --configuration Release \
+            --output ./artifacts \
             /p:Version=${{ steps.get_version.outputs.VERSION }}
       
       - name: Create Release
