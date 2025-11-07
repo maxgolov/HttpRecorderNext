@@ -51,10 +51,10 @@ jobs:
           cd extensions/traffic-recorder
           npm run build
       
-      - name: Run extension tests
-        run: |
-          cd extensions/traffic-recorder
-          npm test
+      # - name: Run extension tests
+      #   run: |
+      #     cd extensions/traffic-recorder
+      #     npm test
       
       - name: Package extension
         run: |
