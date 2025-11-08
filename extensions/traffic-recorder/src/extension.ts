@@ -568,6 +568,24 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // Register Language Model Tool for starting proxy in terminal
+  context.subscriptions.push(
+    vscode.lm.registerTool('traffic-recorder_startProxyInTerminal', {
+      async invoke(_options, _token) {
+        try {
+          await vscode.commands.executeCommand('traffic-recorder.startProxy');
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart('Dev Proxy started successfully in VS Code terminal. You can now see the proxy output and control it interactively.')
+          ]);
+        } catch (error) {
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(`Failed to start Dev Proxy: ${error instanceof Error ? error.message : 'Unknown error'}`)
+          ]);
+        }
+      }
+    })
+  );
+
   // Register commands
   context.subscriptions.push(
     vscode.commands.registerCommand('traffic-recorder.startProxy', startProxy),

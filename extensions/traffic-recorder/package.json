@@ -2,7 +2,7 @@
   "name": "traffic-cop",
   "displayName": "Traffic Cop: HTTP Traffic Recorder for Test Automation",
   "description": "Comprehensive HTTP traffic recorder supporting 20+ test frameworks (Playwright, Jest, Pytest, JUnit, etc.) with automatic detection, Dev Proxy integration, and HAR file generation for debugging, mocking, and performance analysis",
-  "version": "0.7.6",
+  "version": "0.7.9",
   "publisher": "MaxGolovanov",
   "icon": "icon.png",
   "repository": {
@@ -229,7 +229,7 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run build",
+    "vscode:prepublish": "npm run build-all",
     "build": "npm run build:extension && npm run build:mcp",
     "build:extension": "node esbuild.extension.cjs",
     "build:mcp": "node esbuild.mcp.cjs",
@@ -239,12 +239,13 @@
     "test": "node ./dist/test/runTest.js",
     "test:unit": "vitest",
     "test:ui": "vitest --ui",
-    "test:playwright": "playwright test",
+    "test:playlist": "playwright test",
     "lint": "eslint src --ext ts",
     "prebuild": "npm run build-viewer && npm run build-plugin",
     "build-viewer": "cd har-viewer && npm run build",
     "build-plugin": "dotnet build ../../DevProxyExtension/HttpRecorder.DevProxy/HttpRecorder.DevProxy.csproj -c Release && pwsh -Command \"Copy-Item '../../DevProxyExtension/HttpRecorder.DevProxy/bin/Release/net9.0/HttpRecorder.DevProxy.dll' './plugins/' -Force; Copy-Item '../../HttpRecorder/bin/Release/net9.0/HttpRecorder.dll' './plugins/' -Force\"",
-    "package": "npm run build-plugin && vsce package",
+  "build-all": "npm run build-viewer && npm run build-plugin && npm run build:extension && npm run build:mcp",
+  "package": "vsce package",
     "install-extension": "code --install-extension traffic-recorder-0.1.0.vsix",
     "copy-scripts": "node ./scripts/copy-to-user-dir.js"
   },

@@ -23,6 +23,7 @@ export interface SearchCriteria {
   contentType?: string;              // Response content type (substring match)
   afterDate?: string;                // ISO date string - entries after this time
   beforeDate?: string;               // ISO date string - entries before this time
+  traceparent?: string;              // OpenTelemetry traceparent header TraceId substring match
 }
 
 export interface SearchResult {
@@ -204,6 +205,29 @@ export class HARSearch {
         if (entryTime <= beforeTime) {
           matchReasons.push(`Before ${criteria.beforeDate}`);
         } else {
+          matches = false;
+        }
+      }
+
+      // OpenTelemetry traceparent header match
+      // Format: "00-{traceId}-{spanId}-{flags}"
+      // Search for TraceId substring in the traceparent header
+      if (criteria.traceparent !== undefined && matches) {
+        const traceparentValue = HARParser.getHeader(entry.request.headers, 'traceparent');
+        if (traceparentValue) {
+          // traceparent format: version-traceId-spanId-flags
+          // Extract traceId (second segment) or search entire value
+          const parts = traceparentValue.split('-');
+          const traceId = parts.length >= 2 ? parts[1] : '';
+          
+          if (traceId.toLowerCase().includes(criteria.traceparent.toLowerCase()) ||
+              traceparentValue.toLowerCase().includes(criteria.traceparent.toLowerCase())) {
+            matchReasons.push(`Traceparent contains TraceId "${criteria.traceparent}"`);
+          } else {
+            matches = false;
+          }
+        } else {
+          // No traceparent header found
           matches = false;
         }
       }

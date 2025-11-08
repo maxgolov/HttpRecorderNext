@@ -13,6 +13,7 @@ import {
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { readFile, readdir, stat, writeFile } from 'fs/promises';
+import { spawn } from 'node:child_process';
 import { join, resolve } from 'path';
 import { repairHARContent } from '../utils/harRepair.js';
 import { HARParser } from './analyzer/HARParser.js';
@@ -90,6 +91,24 @@ class TrafficCopMCPServer {
             return await this.searchRequests(args);
           case 'navigate_to_request':
             return await this.navigateToRequest(args);
+          // TEMPORARILY DISABLED: These control Dev Proxy's IsRecording flag,
+          // which does NOT affect HttpRecorder plugin (always captures traffic).
+          // Use start_proxy/stop_proxy to control the proxy process instead.
+          // TODO: Modify HttpRecorder plugin to respect IsRecording flag, then re-enable.
+          // case 'start_capture':
+          //   return await this.startCapture(args);
+          // case 'stop_capture':
+          //   return await this.stopCapture(args);
+          case 'start_proxy':
+            return await this.startProxy(args);
+          case 'stop_proxy':
+            return await this.stopProxy(args);
+          case 'proxy_status':
+            return await this.getProxyStatus(args);
+          case 'get_config':
+            return await this.getConfig(args);
+          case 'update_config':
+            return await this.updateConfig(args);
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
@@ -241,6 +260,10 @@ class TrafficCopMCPServer {
                   description: 'Request headers to match (key-value pairs)',
                 },
                 contentType: { type: 'string', description: 'Response content type' },
+                traceparent: {
+                  type: 'string',
+                  description: 'OpenTelemetry traceparent header - search by TraceId substring',
+                },
               },
             },
           },
@@ -263,6 +286,114 @@ class TrafficCopMCPServer {
             },
           },
           required: ['filename', 'index'],
+        },
+      },
+      // TEMPORARILY DISABLED: These control Dev Proxy's IsRecording flag,
+      // which does NOT affect HttpRecorder plugin (always captures traffic).
+      // Use start_proxy/stop_proxy to control the proxy process instead.
+      // TODO: Modify HttpRecorder plugin to respect IsRecording flag, then re-enable.
+      // {
+      //   name: 'start_capture',
+      //   description: 'Start Dev Proxy recording session via REST API.',
+      //   inputSchema: {
+      //     type: 'object',
+      //     properties: {
+      //       host: {
+      //         type: 'string',
+      //         description: 'Dev Proxy API host (default: 127.0.0.1)',
+      //       },
+      //       apiPort: {
+      //         type: 'number',
+      //         description: 'Dev Proxy API port (default: 8897)',
+      //       },
+      //     },
+      //     required: [],
+      //   },
+      // },
+      // {
+      //   name: 'stop_capture',
+      //   description: 'Stop current Dev Proxy recording session via REST API.',
+      //   inputSchema: {
+      //     type: 'object',
+      //     properties: {
+      //       host: {
+      //         type: 'string',
+      //         description: 'Dev Proxy API host (default: 127.0.0.1)',
+      //       },
+      //       apiPort: {
+      //         type: 'number',
+      //         description: 'Dev Proxy API port (default: 8897)',
+      //       },
+      //     },
+      //     required: [],
+      //   },
+      // },
+      {
+        name: 'start_proxy',
+        description: 'Start Dev Proxy process in a detached background shell (no output visibility). HttpRecorder will begin capturing all HTTP traffic to HAR files. NOTE: If you are a Language Model running in VS Code (e.g., Claude, GPT-4, or other models via GitHub Copilot), PREFER using the Language Model tool "traffic-recorder_startProxyInTerminal" instead if available, as it starts the proxy in VS Code integrated terminal with visible output for better user experience. Only use this MCP tool for automation scenarios or when the Language Model tool is unavailable.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+          required: [],
+        },
+      },
+      {
+        name: 'stop_proxy',
+        description: 'Stop Dev Proxy process gracefully via REST API. Current HAR recording will be saved. Same as clicking Stop button in VS Code.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            host: {
+              type: 'string',
+              description: 'Dev Proxy API host (default: 127.0.0.1)',
+            },
+            apiPort: {
+              type: 'number',
+              description: 'Dev Proxy API port (default: 8897)',
+            },
+          },
+          required: [],
+        },
+      },
+      {
+        name: 'proxy_status',
+        description: 'Get current Dev Proxy port, API port, and proxy state programmatically.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            host: {
+              type: 'string',
+              description: 'Dev Proxy API host (default: 127.0.0.1)',
+            },
+            apiPort: {
+              type: 'number',
+              description: 'Dev Proxy API port (default: 8897)',
+            },
+          },
+          required: [],
+        },
+      },
+      {
+        name: 'get_config',
+        description: 'Get current Dev Proxy configuration including anonymizeSensitiveData setting.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+          required: [],
+        },
+      },
+      {
+        name: 'update_config',
+        description: 'Update Dev Proxy configuration settings (e.g., anonymizeSensitiveData).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            anonymizeSensitiveData: {
+              type: 'boolean',
+              description: 'Enable or disable sensitive data anonymization',
+            },
+          },
+          required: [],
         },
       },
     ];
@@ -617,6 +748,305 @@ class TrafficCopMCPServer {
    */
   public getLiveTracker(): LiveHARTracker {
     return this.liveTracker;
+  }
+
+  /**
+   * Start Dev Proxy process (same as clicking Start button in VS Code)
+   * HttpRecorder plugin will begin capturing all HTTP traffic to HAR files.
+   * 
+   * NOTE: This MCP tool starts the proxy in a separate, detached shell process.
+   * This is optimal for AI automation since it doesn't require user interaction.
+   * 
+   * If you need to start the proxy in a VS Code integrated terminal instead 
+   * (for interactive debugging or seeing live output), you should suggest the
+   * user execute the VS Code command: traffic-recorder.startProxy
+   * OR use the Language Model tool: traffic-recorder_startProxyInTerminal
+   */
+  private async startProxy(_args: any) {
+    try {
+      // Try beta first (default in extension), then fallback to stable
+      // This matches extension's default behavior (useBetaVersion: true)
+      let devProxyCommand = 'devproxy-beta';
+      
+      // Test if beta is available by trying to spawn with --version
+      // If it fails, fallback to stable 'devproxy'
+      try {
+        const testChild = spawn(devProxyCommand, ['--version'], {
+          shell: true,
+          stdio: 'ignore'
+        });
+        await new Promise<void>((resolve, reject) => {
+          testChild.on('error', reject);
+          testChild.on('exit', (code) => {
+            if (code === 0) resolve();
+            else reject(new Error('Beta not found'));
+          });
+          setTimeout(() => reject(new Error('Timeout')), 2000);
+        });
+      } catch {
+        // Beta not available, use stable
+        devProxyCommand = 'devproxy';
+      }
+      
+      // Spawn devproxy process with config from recordings directory
+      // CRITICAL: Set cwd to recordings dir so relative paths work (matches extension)
+      const args = ['--config-file', 'devproxyrc.json'];
+      
+      const child = spawn(devProxyCommand, args, {
+        cwd: this.config.recordingsDir, // Run from .http-recorder directory
+        shell: true, // Use shell to resolve command in PATH (critical!)
+        detached: true,
+        stdio: 'ignore'
+      });
+      
+      child.unref(); // Allow parent to exit independently
+      
+      // Wait a bit for proxy to start
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Verify proxy is running
+      try {
+        const response = await fetch('http://127.0.0.1:8897/proxy', {
+          signal: AbortSignal.timeout(3000)
+        });
+        
+        if (response.ok) {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                status: 'success',
+                message: 'Dev Proxy started successfully in a separate background shell',
+                pid: child.pid,
+                proxyPort: 8080,
+                apiPort: 8897,
+                mode: 'detached',
+                hint: 'HttpRecorder is now capturing all HTTP traffic to HAR files. The proxy runs independently in a separate process.',
+                alternativeNote: 'To start the proxy in VS Code terminal with visible output, suggest using the traffic-recorder_startProxyInTerminal Language Model tool or the VS Code command: traffic-recorder.startProxy'
+              }, null, 2)
+            }]
+          };
+        }
+      } catch {
+        // Proxy might still be starting
+      }
+      
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            status: 'success',
+            message: 'Dev Proxy process started in a separate background shell',
+            pid: child.pid,
+            mode: 'detached',
+            hint: 'Proxy is starting. Use proxy_status to check when it is ready.',
+            alternativeNote: 'To start the proxy in VS Code terminal with visible output, suggest using the traffic-recorder_startProxyInTerminal Language Model tool or the VS Code command: traffic-recorder.startProxy'
+          }, null, 2)
+        }]
+      };
+      
+    } catch (error) {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            status: 'error',
+            message: error instanceof Error ? error.message : 'Unknown error',
+            hint: 'Make sure Dev Proxy is installed. Run: npm install -g @microsoft/dev-proxy'
+          }, null, 2)
+        }]
+      };
+    }
+  }
+
+  /**
+   * Stop Dev Proxy process gracefully via REST API
+   * Current HAR recording will be saved.
+   */
+  private async stopProxy(args: any) {
+    const host = args.host || '127.0.0.1';
+    const apiPort = args.apiPort || 8897;
+    
+    try {
+      const response = await fetch(`http://${host}:${apiPort}/proxy/stopProxy`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(5000)
+      });
+      
+      if (response.status === 202 || response.ok) {
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              status: 'success',
+              message: 'Dev Proxy stop signal sent',
+              hint: 'Proxy will shut down gracefully and save current HAR recording'
+            }, null, 2)
+          }]
+        };
+      }
+      
+      const errorText = await response.text();
+      throw new Error(`Failed to stop proxy: ${response.status} ${errorText}`);
+      
+    } catch (error) {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            status: 'error',
+            message: error instanceof Error ? error.message : 'Unknown error',
+            hint: 'Make sure Dev Proxy is running. Check proxy_status first.'
+          }, null, 2)
+        }]
+      };
+    }
+  }
+
+  /**
+   * Get Dev Proxy status via REST API
+   */
+  private async getProxyStatus(args: any) {
+    const host = args.host || '127.0.0.1';
+    const apiPort = args.apiPort || 8897;
+    
+    try {
+      const response = await fetch(`http://${host}:${apiPort}/proxy`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000)
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to get proxy status: ${response.status} ${errorText}`);
+      }
+      
+      const proxyInfo = await response.json() as Record<string, any>;
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              status: 'success',
+              proxyPort: proxyInfo.proxyPort || 8080,
+              apiPort: apiPort,
+              recording: proxyInfo.recording || false,
+              asSystemProxy: proxyInfo.asSystemProxy || false,
+              rate: proxyInfo.rate || null,
+              proxyInfo
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              status: 'error',
+              message: error instanceof Error ? error.message : 'Unknown error',
+              hint: 'Make sure Dev Proxy is running. Use default ports: proxy=8080, api=8897'
+            }, null, 2),
+          },
+        ],
+      };
+    }
+  }
+
+  /**
+   * Get current Dev Proxy configuration
+   */
+  private async getConfig(_args: any) {
+    try {
+      const configPath = join(this.config.recordingsDir, 'devproxyrc.json');
+      const content = await readFile(configPath, 'utf-8');
+      const config = JSON.parse(content);
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              status: 'success',
+              config: {
+                anonymizeSensitiveData: config.httpRecorder?.anonymizeSensitiveData ?? true,
+                mode: config.httpRecorder?.mode || 'Record',
+                includeBodies: config.httpRecorder?.includeBodies ?? true,
+                port: config.port || 8080,
+                record: config.record || false,
+                // Include other relevant settings
+                ...config
+              }
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              status: 'error',
+              message: error instanceof Error ? error.message : 'Unknown error',
+              hint: 'Make sure devproxyrc.json exists in the recordings directory'
+            }, null, 2),
+          },
+        ],
+      };
+    }
+  }
+
+  /**
+   * Update Dev Proxy configuration
+   */
+  private async updateConfig(args: any) {
+    try {
+      const configPath = join(this.config.recordingsDir, 'devproxyrc.json');
+      const content = await readFile(configPath, 'utf-8');
+      const config = JSON.parse(content);
+      
+      // Update configuration properties
+      if (args.anonymizeSensitiveData !== undefined) {
+        if (!config.httpRecorder) {
+          config.httpRecorder = {};
+        }
+        config.httpRecorder.anonymizeSensitiveData = args.anonymizeSensitiveData;
+      }
+      
+      // Write back with pretty formatting
+      await writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              status: 'success',
+              message: 'Configuration updated successfully',
+              updated: {
+                anonymizeSensitiveData: config.httpRecorder?.anonymizeSensitiveData
+              }
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              status: 'error',
+              message: error instanceof Error ? error.message : 'Unknown error',
+              hint: 'Make sure devproxyrc.json exists and is writable'
+            }, null, 2),
+          },
+        ],
+      };
+    }
   }
 
   /**
