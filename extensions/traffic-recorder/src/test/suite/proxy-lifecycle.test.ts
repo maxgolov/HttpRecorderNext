@@ -2,13 +2,19 @@
  * Dev Proxy Lifecycle E2E Tests
  * 
  * Tests for Start/Stop proxy functionality
+ * 
+ * NOTE: These tests require Dev Proxy to be installed and are skipped in CI
  */
 
 import * as assert from 'assert';
 import * as http from 'http';
 import * as vscode from 'vscode';
 
-suite('Dev Proxy Lifecycle Tests', () => {
+// Skip these tests in CI environment (they require Dev Proxy installation)
+const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
+const describeOrSkip = isCI ? suite.skip : suite;
+
+describeOrSkip('Dev Proxy Lifecycle Tests', () => {
   const API_PORT = 8897;
   const API_HOST = '127.0.0.1';
 

@@ -14,12 +14,12 @@ suite('Traffic Recorder Extension Test Suite', () => {
 
   suite('Extension Activation', () => {
     test('Extension should be present', () => {
-      const extension = vscode.extensions.getExtension('maxgolov.traffic-cop');
+      const extension = vscode.extensions.getExtension('MaxGolovanov.traffic-cop');
       assert.ok(extension, 'Extension should be installed');
     });
 
     test('Extension should activate', async () => {
-      const extension = vscode.extensions.getExtension('maxgolov.traffic-cop');
+      const extension = vscode.extensions.getExtension('MaxGolovanov.traffic-cop');
       assert.ok(extension, 'Extension not found');
       
       await extension!.activate();

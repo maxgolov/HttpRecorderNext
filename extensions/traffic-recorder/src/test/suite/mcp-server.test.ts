@@ -11,7 +11,7 @@ import * as vscode from 'vscode';
 
 suite('MCP Server Tests', () => {
   test('Should register MCP server definition provider', async () => {
-    const extension = vscode.extensions.getExtension('maxgolov.traffic-cop');
+    const extension = vscode.extensions.getExtension('MaxGolovanov.traffic-cop');
     assert.ok(extension, 'Extension should be installed');
 
     // Ensure extension is activated
@@ -41,7 +41,7 @@ suite('MCP Server Tests', () => {
   });
 
   test('Should bundle MCP server code', () => {
-    const extension = vscode.extensions.getExtension('maxgolov.traffic-cop');
+    const extension = vscode.extensions.getExtension('MaxGolovanov.traffic-cop');
     assert.ok(extension, 'Extension should be installed');
 
     const mcpServerPath = path.join(extension.extensionPath, 'dist', 'mcp', 'server.js');
@@ -50,7 +50,7 @@ suite('MCP Server Tests', () => {
   });
 
   test('MCP server bundle should use CommonJS format', () => {
-    const extension = vscode.extensions.getExtension('maxgolov.traffic-cop');
+    const extension = vscode.extensions.getExtension('MaxGolovanov.traffic-cop');
     assert.ok(extension, 'Extension should be installed');
 
     const mcpServerPath = path.join(extension.extensionPath, 'dist', 'mcp', 'server.js');
@@ -74,7 +74,7 @@ suite('MCP Server Tests', () => {
   });
 
   test('Should provide MCP server configuration', async () => {
-    const extension = vscode.extensions.getExtension('maxgolov.traffic-cop');
+    const extension = vscode.extensions.getExtension('MaxGolovanov.traffic-cop');
     assert.ok(extension, 'Extension should be installed');
 
     if (!extension.isActive) {
