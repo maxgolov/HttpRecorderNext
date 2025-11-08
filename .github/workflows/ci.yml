@@ -26,7 +26,9 @@ jobs:
           dotnet-version: '9.0.x'
       
       - name: Restore dependencies
-        run: dotnet restore
+        run: |
+          dotnet restore HttpRecorder.sln
+          dotnet restore DevProxyExtension/HttpRecorder.DevProxy/HttpRecorder.DevProxy.csproj
       
       - name: Build HttpRecorder
         run: dotnet build HttpRecorder/HttpRecorder.csproj --configuration Release --no-restore
@@ -67,8 +69,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 'lts/*'
-          cache: 'npm'
-          cache-dependency-path: extensions/traffic-recorder/package-lock.json
       
       - name: Download .NET artifacts
         uses: actions/download-artifact@v4
@@ -84,7 +84,7 @@ jobs:
       
       - name: Install dependencies
         working-directory: extensions/traffic-recorder
-        run: npm ci
+        run: npm install
       
       - name: Build extension
         working-directory: extensions/traffic-recorder
@@ -170,12 +170,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 'lts/*'
-          cache: 'npm'
-          cache-dependency-path: extensions/traffic-recorder/package-lock.json
       
       - name: Install dependencies
         working-directory: extensions/traffic-recorder
-        run: npm ci
+        run: npm install
       
       - name: Run ESLint
         working-directory: extensions/traffic-recorder
