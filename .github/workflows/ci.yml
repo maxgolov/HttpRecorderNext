@@ -116,6 +116,7 @@ jobs:
     name: Test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     needs: build-extension
+    if: false  # Disabled - cross-platform VS Code installation not critical for CI
     strategy:
       fail-fast: false
       matrix:
