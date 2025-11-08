@@ -36,6 +36,9 @@ jobs:
       - name: Build HttpRecorder.DevProxy
         run: dotnet build DevProxyExtension/HttpRecorder.DevProxy/HttpRecorder.DevProxy.csproj --configuration Release --no-restore
       
+      - name: Build HttpRecorder.Tests
+        run: dotnet build HttpRecorder.Tests/HttpRecorder.Tests.csproj --configuration Release --no-restore
+      
       - name: Run .NET tests
         run: dotnet test HttpRecorder.Tests/HttpRecorder.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
       
@@ -177,7 +180,7 @@ jobs:
       
       - name: Run ESLint
         working-directory: extensions/traffic-recorder
-        run: npm run lint
+        run: ESLINT_USE_FLAT_CONFIG=false npm run lint
       
       - name: Check TypeScript compilation
         working-directory: extensions/traffic-recorder
