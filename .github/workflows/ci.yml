@@ -89,6 +89,10 @@ jobs:
         working-directory: extensions/traffic-recorder
         run: npm install
       
+      - name: Install HAR viewer dependencies
+        working-directory: extensions/traffic-recorder/har-viewer
+        run: npm install
+      
       - name: Build extension
         working-directory: extensions/traffic-recorder
         run: npm run build
